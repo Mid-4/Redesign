@@ -103,15 +103,17 @@ async function startJob(mode) {
     render();
   } catch (e) { $('err').textContent = e.message || String(e); }
 }
-$('btnStart').onclick = () => startJob('redesign');
-$('btnScale').onclick = async () => {
+// Cả 2 luồng đều bắt đầu bằng bước Claude phân tích -> cần đăng nhập Claude.
+async function startWithClaude(mode) {
   if (SETUP.st && !SETUP.st.claudeOk) {
     await openSetup();
-    SETUP.err = 'Phân tích & Scale cần đăng nhập Claude — làm bước 3 rồi bấm lại.'; renderSetup();
+    SETUP.err = 'Cần đăng nhập Claude (bước 3) để phân tích design — làm xong rồi bấm lại.'; renderSetup();
     return;
   }
-  startJob('scale');
-};
+  startJob(mode);
+}
+$('btnStart').onclick = () => startWithClaude('redesign');
+$('btnScale').onclick = () => startWithClaude('scale');
 $('btnCollect').onclick = () => job && window.api.collect(job.id);
 $('btnOpenDir').onclick = () => job && window.api.openDir(job.id);
 
@@ -187,11 +189,15 @@ function mdToHtml(md) {
 
 function renderReport(j) {
   const box = $('report');
-  box.hidden = j.mode !== 'scale';
+  const scale = j.mode === 'scale';
+  const waiting = !j.report && (j.stage === 'queued' || (j.running && j.step === 'analyze'));
+  // Job Redesign cũ (trước khi có bước Claude) không có phân tích -> ẩn khung.
+  box.hidden = !(j.report || waiting || scale);
   if (box.hidden) return;
+  const title = scale ? '📊 Báo cáo research thị trường' : '🔍 Phân tích design (Claude)';
   const html = j.report
-    ? `<h4>📊 Báo cáo research thị trường</h4>${mdToHtml(j.report)}<p class="hint">Đã lưu: report.md trong thư mục job.</p>`
-    : `<p class="hint">${j.running || j.stage === 'queued' ? '📊 Claude đang phân tích & research — báo cáo + 5 hướng scale sẽ hiện ở đây khi xong.' : '📊 Chưa có báo cáo research.'}</p>`;
+    ? `<h4>${title}</h4>${mdToHtml(j.report)}<p class="hint">Đã lưu: report.md trong thư mục job.</p>`
+    : `<p class="hint">${waiting ? (scale ? '📊 Claude đang phân tích & research — báo cáo + 5 hướng scale sẽ hiện ở đây khi xong.' : '🔍 Claude đang phân tích design — kết quả + 5 hướng redesign sẽ hiện ở đây khi xong.') : '📊 Chưa có báo cáo.'}</p>`;
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
 }
 
@@ -250,8 +256,9 @@ const STEP_IDX = { open: 0, send: 0, work: 1, download: 2 };
 // Job Scale: Phân tích (Claude research) → Tạo ảnh → Tải ảnh.
 const SCALE_STEPS = ['Phân tích', 'Tạo ảnh', 'Tải ảnh'];
 const SCALE_IDX = { analyze: 0, open: 1, send: 1, work: 1, download: 2 };
-const stepsOf = (j) => (j.mode === 'scale' ? SCALE_STEPS : STEPS);
-const idxOf = (j) => (j.mode === 'scale' ? SCALE_IDX : STEP_IDX);
+const legacy = (j) => j.mode !== 'scale' && !j.designs?.length && j.stage === 'done'; // job Redesign làm trước khi có bước Claude
+const stepsOf = (j) => (legacy(j) ? STEPS : SCALE_STEPS);
+const idxOf = (j) => (legacy(j) ? STEP_IDX : SCALE_IDX);
 const STEP_TEXT = { queue: 'Chờ tới lượt', analyze: 'Đang phân tích & research', open: 'Chuẩn bị', send: 'Gửi design', work: 'Đang làm', download: 'Tải ảnh về' };
 const EXPECT = { analyze: 360, open: 20, send: 40, work: 420, download: 20 }; // giây dự kiến mỗi bước (để thanh chạy đều, không tới 100%)
 const QTABS = [['all', 'Tất cả'], ['run', 'Đang chạy'], ['done', 'Hoàn tất'], ['fail', 'Lỗi / huỷ']];
@@ -278,7 +285,7 @@ function statusChip(j) {
 function progressHtml(j) {
   const steps = stepsOf(j), sIdx = idxOf(j);
   let cur = j.stage === 'done' ? steps.length : j.running ? (sIdx[j.step] ?? 0) : j.stage === 'queued' ? -1 : (sIdx[j.step] ?? 1);
-  if (j.mode === 'scale' && j.designs?.length && cur < 1) cur = 1; // đã phân tích xong
+  if (j.designs?.length && cur < 1) cur = 1; // đã phân tích xong
   let pct = 0;
   if (j.running && j.stepAt) {
     const exp = EXPECT[j.step] || 60;

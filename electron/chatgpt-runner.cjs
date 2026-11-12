@@ -439,6 +439,13 @@ async function listGenerated() {
   }).catch(() => []);
 }
 
+/** Số ô ảnh trong gallery ("Show generated image N") mà ảnh chưa tải xong — gallery vừa gom lại thì ảnh load dần. */
+async function galleryPending() {
+  return pg().evaluate(() => [...document.querySelectorAll('button[aria-label],[role=button][aria-label]')]
+    .filter((b) => /generated image \d+/i.test(b.getAttribute('aria-label') || ''))
+    .filter((b) => { const i = b.querySelector('img'); return !i || !i.complete || i.naturalWidth < 512; }).length).catch(() => 0);
+}
+
 /**
  * Chờ tới khi có đủ `expect` ảnh mới và ChatGPT xong việc ("Worked for…", trang đứng yên).
  * ChatGPT dừng mà chưa đủ ảnh -> trả số ảnh đang có.
@@ -454,7 +461,9 @@ async function waitForImages(before, expect, log, onImages) {
     if (list.length !== lastN) { lastN = list.length; if (lastN) log(`Đã có ${lastN}/${expect} ảnh…`); onImages?.(lastN); }
     if (await isBusy()) continue;
     const quiet = Date.now() - lastChange;
-    if (list.length >= expect && quiet > 6000) return list.length;
+    // Gallery còn ô chưa tải ảnh -> chờ thêm (tối đa 60s), không thì tải thiếu ảnh (lỗi đã gặp 12/11).
+    if (list.length >= expect && quiet < 60000 && await galleryPending()) continue;
+    if (list.length >= expect && quiet > 12000) return list.length;
     if (quiet > 120000) return list.length; // ChatGPT đã dừng hẳn mà chưa đủ ảnh
   }
   log('⚠️ Hết thời gian chờ ChatGPT Work.');

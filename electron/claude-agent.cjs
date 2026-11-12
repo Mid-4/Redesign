@@ -110,7 +110,7 @@ const procs = new Map(); // key -> child process (để huỷ)
  * Phân tích design + research thị trường + lên 5 mẫu scale.
  * -> { report: markdown tiếng Việt, designs: [{ name, shirt_color, summary_vi, brief }] }
  */
-function analyze({ key, designFile, prompt, workDir, timeoutMs = 25 * 60 * 1000 }, log = () => {}) {
+function analyze({ key, designFile, prompt, workDir, tools = 'Read,WebSearch,WebFetch', timeoutMs = 25 * 60 * 1000 }, log = () => {}) {
   const exe = findClaude();
   if (!exe) return Promise.reject(new Error('Máy chưa có Claude — mở Cài đặt ban đầu để cài và đăng nhập.'));
   fs.mkdirSync(workDir, { recursive: true });
@@ -118,7 +118,7 @@ function analyze({ key, designFile, prompt, workDir, timeoutMs = 25 * 60 * 1000 
   fs.copyFileSync(designFile, img);
   const args = [
     '-p', '--output-format', 'json', '--json-schema', JSON.stringify(SCHEMA),
-    '--tools', 'Read,WebSearch,WebFetch', '--allowedTools', 'Read,WebSearch,WebFetch',
+    '--tools', tools, '--allowedTools', tools,
     '--permission-mode', 'dontAsk', '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence',
   ];
   return new Promise((resolve, reject) => {

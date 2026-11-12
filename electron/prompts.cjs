@@ -88,12 +88,42 @@ Return JSON only (it is validated against a schema):
   - "brief": a complete English brief for an image generator, 60–120 words: subject and art (pose, details), EXACT text to print (in quotes), layout and typography, style, palette, where the print goes on the product${/2 mặt|Jersey|AOP/.test(p.name) ? ' (back = large main design, front = small matching chest print)' : ''}, and a fitting lifestyle background. Do not describe the model's face.`;
 }
 
-/** Tin nhắn gửi skill (ChatGPT Work) tạo 5 mockup theo brief Claude đã viết. */
-function briefMessage({ product, model, color, note, designs }) {
+/**
+ * Prompt cho agent Claude — bước Phân tích của job Redesign: đọc design thật kỹ (art, chép đúng từng chữ),
+ * lên 5 hướng redesign (đổi bố cục + style, giữ art + text) hợp sản phẩm, viết brief cho bước tạo mockup.
+ */
+function redesignAnalysisPrompt({ product, model, color, note }) {
+  const p = findProduct(product);
+  return `You are a senior print-on-demand (POD) designer.
+
+The design to redesign is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first and study it closely.
+Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note (follow it): ${note}` : ''}
+
+Do this:
+1. ANALYZE: theme/niche and target buyer; describe the artwork precisely (subjects, pose, details, colors) so an illustrator could recognize it; transcribe EVERY text exactly as printed (spelling, punctuation, capitalization); current style and layout.
+2. PLAN 5 REDESIGN DIRECTIONS for this product. Each direction KEEPS the original artwork (same illustration / characters / graphics — never a different subject) and KEEPS ALL text exactly, letter for letter, no new words. Each uses a clearly DIFFERENT layout and a clearly DIFFERENT style — different from the original and from each other (e.g. arched retro type, vintage badge/emblem, distressed 70s, Y2K, minimal line art, sticker collage, editorial typographic poster, grunge halftone, varsity, western, cottagecore — pick what fits the theme). Fit the layout to the product's print area and shape${/2 mặt|Jersey|AOP/.test(p.name) ? '; back = large redesign, front = small matching chest print reusing part of the text or art' : ''}.
+
+Return JSON only (it is validated against a schema):
+- "report_md": the analysis in VIETNAMESE markdown (quote original texts as-is), exactly these sections:
+  "## Phân tích design" (bullets: ngách & khách hàng, art, chữ trên design (chép đúng), style, bố cục), "## 5 hướng redesign" (numbered: **name** — bố cục + style + vì sao hợp).
+- "designs": exactly 5 items, same order as the report:
+  - "name": short English direction name;
+  - "shirt_color": ${p.cc ? (color ? `"${color}"` : `exactly one of these Comfort Colors names: ${COLORS.map((c) => c[0]).join(', ')} — strong contrast with the print, vary across directions`) : 'the product/base color'};
+  - "summary_vi": one short Vietnamese line: bố cục + style mới;
+  - "brief": a complete English brief for an image generator, 60–120 words: which parts of the original art are used and how they are arranged, the EXACT original text (in quotes) and its typography, the new layout and style, palette, print placement on the product, and a fitting lifestyle background. Do not describe the model's face.`;
+}
+
+/**
+ * Tin nhắn gửi skill (ChatGPT Work) tạo mockup theo brief Claude đã viết.
+ * kind 'redesign' = giữ art + chữ của design đính kèm; 'scale' = thiết kế mới, design gốc chỉ để tham khảo chất lượng.
+ */
+function briefMessage({ product, model, color, note, designs, kind = 'scale' }) {
   const p = findProduct(product);
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   return [
-    `Render ${designs.length} scale designs from these briefs (the attached image is the original design — use it only as the quality and style reference).`,
+    kind === 'redesign'
+      ? `Render ${designs.length} redesign options from these briefs (keep the attached design's artwork and ALL its text exactly; change only layout and style as each brief says).`
+      : `Render ${designs.length} scale designs from these briefs (the attached image is the original design — use it only as the quality and style reference).`,
     `Product: ${p.name}.`,
     p.wear ? `Model: ${model || 'woman'}.` : '',
     note ? `Note: ${clean(note)}` : '',
@@ -122,4 +152,4 @@ function parseLines(text) {
   return out;
 }
 
-module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, briefMessage, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };
+module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };

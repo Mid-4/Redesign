@@ -172,12 +172,43 @@ function saveJobFile(job) {
   } catch {}
 }
 
+/**
+ * ChatGPT đôi khi vẽ thừa (vẽ lại 1 hướng 2 lần) -> nhiều ảnh hơn số mẫu, lệch thứ tự.
+ * Bỏ dần ảnh GIỐNG ảnh liền sau nhất (bản nháp trước của cùng hướng), giữ bản sau, tới khi đủ `n` ảnh.
+ */
+function pruneExtras(files, n, log) {
+  const sig = (f) => {
+    const img = nativeImage.createFromPath(f);
+    if (img.isEmpty()) return null;
+    // So vùng giữa (áo + bản in), bỏ bớt nền: 2 bản của cùng 1 hướng cùng màu áo, cùng bố cục.
+    const { width: w, height: h } = img.getSize();
+    return img.crop({ x: Math.round(w * 0.1), y: Math.round(h * 0.25), width: Math.round(w * 0.8), height: Math.round(h * 0.6) })
+      .resize({ width: 32, height: 24, quality: 'good' }).toBitmap();
+  };
+  const list = files.map((f) => ({ f, s: sig(f) }));
+  const diff = (a, b) => {
+    if (!a.s || !b.s || a.s.length !== b.s.length) return Infinity;
+    let d = 0;
+    for (let k = 0; k < a.s.length; k += 4) d += Math.abs(a.s[k] - b.s[k]) + Math.abs(a.s[k + 1] - b.s[k + 1]) + Math.abs(a.s[k + 2] - b.s[k + 2]);
+    return d / (a.s.length / 4);
+  };
+  while (list.length > n) {
+    let best = 0, bestD = Infinity;
+    for (let k = 0; k + 1 < list.length; k++) { const d = diff(list[k], list[k + 1]); if (d < bestD) { bestD = d; best = k; } }
+    log(`ChatGPT vẽ thừa ảnh — bỏ ảnh ${best + 1} (giống ảnh kế tiếp, lệch ${Math.round(bestD)}).`);
+    try { fs.unlinkSync(list[best].f); } catch {}
+    list.splice(best, 1);
+  }
+  return list.map((x) => x.f);
+}
+
 /** Gán ảnh + tên hướng vào 5 mẫu (bỏ qua mẫu đã xong và mẫu skill báo FAILED). */
 function assignResults(job, r) {
   if (r.url) job.convUrl = r.url;
   const info = P.parseLines(r.reply).slice(-job.options.length);
   job.options.forEach((o, i) => applyInfo(o, info[i]));
   const slots = job.options.map((_, i) => i).filter((i) => !info[i]?.failed);
+  if (r.files.length > slots.length) r.files = pruneExtras(r.files, slots.length, jlog(job));
   r.files.forEach((f, k) => {
     const i = slots[k];
     if (i !== undefined && job.options[i].status !== 'done') saveOption(job, i, f);
@@ -210,7 +241,7 @@ function applyDesigns(job) {
     const o = job.options[i];
     if (!o) return;
     o.name = d.name || o.name; o.summary = d.summary_vi || o.summary;
-    if (!o.shirt_color || o.status !== 'done') o.shirt_color = job.color || d.shirt_color || o.shirt_color;
+    o.shirt_color = job.color || d.shirt_color || o.shirt_color; // ChatGPT hay ghi kèm tên SP ("T-shirt 2 mặt Sage") -> lấy màu theo brief
   });
 }
 
@@ -226,19 +257,30 @@ async function runAll(job, collect = false) {
   const expect = job.options.length;
   const msgArgs = { product: job.product, model: job.model, color: job.color, note: job.note };
   try {
-    // Job Scale chặng 1: Claude phân tích design + research thị trường + 5 hướng scale -> chờ chọn hướng.
-    if (job.mode === 'scale' && !collect && !job.designs?.length) {
+    // Bước đầu mọi job: Claude phân tích design (làm 1 lần — Thử lại không phân tích lại).
+    //  - Scale: + research thị trường -> 5 hướng scale -> DỪNG chờ nhân viên chọn hướng (job:pick).
+    //  - Redesign: 5 hướng redesign (giữ art + chữ) -> chạy tiếp luôn sang ChatGPT vẽ 5 mockup.
+    if (!collect && !job.designs?.length) {
+      const scale = job.mode === 'scale';
       setStep(job, 'analyze');
       const a = await claude.analyze({
-        key: job.id, designFile: job.designFile, prompt: P.scaleAnalysisPrompt(msgArgs),
+        key: job.id, designFile: job.designFile,
+        prompt: scale ? P.scaleAnalysisPrompt(msgArgs) : P.redesignAnalysisPrompt(msgArgs),
+        tools: scale ? 'Read,WebSearch,WebFetch' : 'Read',
         workDir: path.join(runnerPaths().downloadDir, `claude-${path.basename(job.dir)}`),
       }, jlog(job));
       if (job.cancelled) throw new Error('Đã huỷ.');
       job.designs = a.designs;
       saveReport(job, a.report);
-      job.stage = 'review';
-      jlog(job)('Phân tích xong — chờ chọn hướng để tạo ảnh.');
-      return;
+      if (scale) {
+        job.stage = 'review';
+        jlog(job)('Phân tích xong — chờ chọn hướng để tạo ảnh.');
+        return;
+      }
+      job.picked = job.designs.map((_, k) => k).slice(0, job.options.length);
+      applyDesigns(job);
+      saveJobFile(job); update();
+      job.step = 'open'; job.stepAt = new Date().toISOString();
     }
     await skillReady; // app vừa cập nhật skill mới vào tài khoản -> chờ cài xong rồi mới gửi
     const r = await runner.workTask(collect
@@ -247,13 +289,16 @@ async function runAll(job, collect = false) {
         ...runnerPaths(),
         ...hooks(job),
         skill: getSettings().skillName,
-        message: job.mode === 'scale' ? P.briefMessage({ ...msgArgs, designs: pickedDesigns(job) }) : P.skillMessage(msgArgs),
+        // Có brief của Claude -> skill chỉ vẽ theo brief (phòng hờ không có brief thì skill tự phân tích như bản đầu).
+        message: job.designs?.length
+          ? P.briefMessage({ ...msgArgs, designs: pickedDesigns(job), kind: job.mode === 'scale' ? 'scale' : 'redesign' })
+          : P.skillMessage(msgArgs),
         images: [job.design],
         expect,
         onUrl: (u) => { job.convUrl = u; saveJobFile(job); update(); },
       }, jlog(job));
     assignResults(job, r);
-    if (job.mode === 'scale') applyDesigns(job);
+    applyDesigns(job);
     job.stage = 'done';
   } catch (e) {
     if (job.cancelled) { job.stage = 'cancelled'; job.error = 'Đã huỷ.'; jlog(job)('Đã huỷ job.'); }
