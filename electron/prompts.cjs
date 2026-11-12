@@ -2,7 +2,7 @@
 // chatgpt-skill/comfort-redesign/SKILL.md) + bảng màu Comfort Colors 1717.
 
 const NUM_OPTIONS = 5;
-const SCALE_OPTIONS = 4; // chế độ Phân tích & Scale: research thị trường + 4 mẫu scale
+const SCALE_OPTIONS = 5; // job Phân tích & Scale: Claude phân tích + research, ChatGPT tạo 5 mockup
 
 // Màu Comfort Colors 1717 (hex xấp xỉ, chỉ để hiện ô màu trên app).
 const COLORS = [
@@ -60,36 +60,45 @@ function skillMessage({ product, model, color, note }) {
   ].filter(Boolean).join(' ');
 }
 
-/** Tin nhắn chế độ Scale (skill tự research các sàn + tạo 4 mockup + báo cáo). */
-function scaleMessage({ product, model, color, note }) {
-  const p = findProduct(product);
-  return [
-    `Scale the attached design: research the market and create ${SCALE_OPTIONS} scale designs.`,
-    `Product: ${p.name}.`,
-    p.wear ? `Model: ${model || 'woman'}.` : '',
-    p.cc ? `Shirt color: ${color || 'choose per option'}.` : '',
-    note ? `Note: ${note}` : '',
-  ].filter(Boolean).join(' ');
-}
+const MODEL_EN = { woman: 'an adult woman', man: 'an adult man', couple: 'an adult couple (woman + man)', auto: 'adult model(s) that sell this product best' };
 
 /**
- * Báo cáo research (markdown) của chế độ Scale: khối code bắt đầu "# SCALE REPORT".
- * Không thấy khối code -> lấy phần chữ từ "SCALE REPORT" cuối cùng tới trước các dòng kết quả.
+ * Prompt cho agent Claude (bước Phân tích của job Scale): xem design, research thị trường trên web,
+ * chọn 5 hướng scale, viết brief cho bước tạo mockup. Trả JSON theo schema trong claude-agent.cjs.
  */
-function parseReport(reply, blocks) {
-  const b = (blocks || []).filter((x) => /^\s*#\s*SCALE REPORT/i.test(x)).pop();
-  let md = b;
-  if (!md) {
-    const t = String(reply || ''), k = t.lastIndexOf('SCALE REPORT');
-    if (k < 0) return '';
-    // Work hiện khối code không phải <pre> -> báo cáo nằm trong chữ trang. Cắt tới dòng kết quả đầu tiên
-    // "Tên — Màu — Tóm tắt" (2 dấu gạch dài, không in đậm, không link); sau đó là chữ giao diện ChatGPT.
-    const isLine = (l) => (l.match(/\s[—–]\s/g) || []).length >= 2 && !/\*\*|https?:/.test(l);
-    const lines = t.slice(k).split('\n');
-    const end = lines.findIndex(isLine);
-    md = (end < 0 ? lines : lines.slice(0, end)).join('\n');
-  }
-  return md.replace(/^\s*#?\s*SCALE REPORT\s*\n?/i, '').trim();
+function scaleAnalysisPrompt({ product, model, color, note }) {
+  const p = findProduct(product);
+  return `You are a senior print-on-demand (POD) market researcher and designer for a US-focused POD shop.
+
+The design to analyze is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first.
+Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note: ${note}` : ''}
+
+Do this:
+1. ANALYZE the design: niche, target buyer, occasion, subject/art, every text exactly, style, layout, and the selling "formula" (e.g. "funny profession phrase + retro sunset badge").
+2. RESEARCH the market with WebSearch / WebFetch across Google Shopping, Etsy, Amazon, eBay, Walmart, Redbubble, TeePublic, Pinterest, Reddit, Instagram, Facebook, TikTok Shop and other e-commerce / POD sites. If a site blocks access, use search results / snippets and say so. Find: best-selling / trending similar designs, which variations of the formula sell (audiences, professions, phrases, characters, holidays/seasons, personalization), buyer keywords and tags, the typical price range for this product, demand signals (reviews, sales badges, likes, threads), and gaps. Use at least 8 different sources and keep their URLs. Be honest: listings prove a niche exists, not sales volume.
+3. PICK 5 SCALE DESIGNS — 5 clearly different angles. Each keeps the recognizable formula of the original (style, layout energy, vibe, product fit) but changes the variable part (audience, phrase, subject, occasion…) toward a demand you found. Original art and wording only: never copy a competitor's design; no brand logos, trademarks, sports-team marks or celebrity names that are not already in the attached design. New text: short, punchy, correctly spelled English.
+
+Return JSON only (it is validated against a schema):
+- "report_md": the report in VIETNAMESE markdown (keep keywords/tags in English), exactly these sections:
+  "## Phân tích design" (3–5 bullets), "## Thị trường" (one bullet per site checked: finding + source as [tên](url)), "## Từ khoá & tag" (10–20 comma-separated), "## Giá bán tham khảo" (price range + sources), "## 5 hướng scale" (numbered: **name** — why it sells + evidence link).
+- "designs": exactly 5 items, same order as the report:
+  - "name": short English name of the design;
+  - "shirt_color": ${p.cc ? (color ? `"${color}"` : `exactly one of these Comfort Colors names: ${COLORS.map((c) => c[0]).join(', ')} — pick what fits, vary across designs`) : 'the product/base color'};
+  - "summary_vi": one short Vietnamese line: what changed vs the original;
+  - "brief": a complete English brief for an image generator, 60–120 words: subject and art (pose, details), EXACT text to print (in quotes), layout and typography, style, palette, where the print goes on the product${/2 mặt|Jersey|AOP/.test(p.name) ? ' (back = large main design, front = small matching chest print)' : ''}, and a fitting lifestyle background. Do not describe the model's face.`;
+}
+
+/** Tin nhắn gửi skill (ChatGPT Work) tạo 5 mockup theo brief Claude đã viết. */
+function briefMessage({ product, model, color, note, designs }) {
+  const p = findProduct(product);
+  const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  return [
+    `Render ${designs.length} scale designs from these briefs (the attached image is the original design — use it only as the quality and style reference).`,
+    `Product: ${p.name}.`,
+    p.wear ? `Model: ${model || 'woman'}.` : '',
+    note ? `Note: ${clean(note)}` : '',
+    ...designs.map((d, i) => `#${i + 1} ${clean(d.name)} | ${p.cc ? 'Shirt color' : 'Color'}: ${clean(color || d.shirt_color)} | ${clean(d.brief)}`),
+  ].filter(Boolean).join(' '); // 1 dòng: xuống dòng trong ô soạn ChatGPT có thể gửi tin luôn
 }
 
 function regenMessage(n, note) {
@@ -113,4 +122,4 @@ function parseLines(text) {
   return out;
 }
 
-module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleMessage, parseReport, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };
+module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, briefMessage, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };

@@ -9,6 +9,7 @@ const { pathToFileURL } = require('node:url');
 // "Comfort Redesign" làm mất phiên đăng nhập + cài đặt đã có khi chạy dev.
 app.setPath('userData', path.join(app.getPath('appData'), 'comfort-redesign'));
 const runner = require('./chatgpt-runner.cjs');
+const claude = require('./claude-agent.cjs'); // agent Claude: bước Phân tích & research của job Scale
 const P = require('./prompts.cjs');
 
 let win = null;
@@ -195,9 +196,19 @@ const hooks = (job) => ({ key: job.id, onStep: (st) => setStep(job, st), onImage
 /** Chạy việc chính (gửi skill) hoặc collect = chỉ lấy kết quả từ hội thoại đã có. */
 /** Báo cáo research của job Scale: hiện ở trang chi tiết + lưu report.md trong thư mục job. */
 function saveReport(job, md) {
-  if (!md) { jlog(job)('⚠️ Không đọc được báo cáo research trong trả lời của ChatGPT.'); return; }
+  if (!md) return;
   job.report = md;
   try { fs.writeFileSync(path.join(job.dir, 'report.md'), `# Báo cáo research — ${job.name}\n\n${md}\n`); } catch {}
+}
+
+/** Tên + màu + mô tả tiếng Việt của mẫu Scale lấy theo brief của Claude (giữ màu ChatGPT báo nếu có). */
+function applyDesigns(job) {
+  (job.designs || []).forEach((d, i) => {
+    const o = job.options[i];
+    if (!o) return;
+    o.name = d.name || o.name; o.summary = d.summary_vi || o.summary;
+    if (!o.shirt_color || o.status !== 'done') o.shirt_color = job.color || d.shirt_color || o.shirt_color;
+  });
 }
 
 async function runAll(job, collect = false) {
@@ -212,6 +223,20 @@ async function runAll(job, collect = false) {
   const expect = job.options.length;
   const msgArgs = { product: job.product, model: job.model, color: job.color, note: job.note };
   try {
+    // Job Scale: Claude phân tích design + research thị trường + viết 5 brief (làm 1 lần, Thử lại không làm lại).
+    if (job.mode === 'scale' && !collect && !job.designs?.length) {
+      setStep(job, 'analyze');
+      const a = await claude.analyze({
+        key: job.id, designFile: job.designFile, prompt: P.scaleAnalysisPrompt(msgArgs),
+        workDir: path.join(runnerPaths().downloadDir, `claude-${path.basename(job.dir)}`),
+      }, jlog(job));
+      if (job.cancelled) throw new Error('Đã huỷ.');
+      job.designs = a.designs;
+      saveReport(job, a.report);
+      applyDesigns(job);
+      saveJobFile(job); update();
+      job.step = 'open'; job.stepAt = new Date().toISOString();
+    }
     await skillReady; // app vừa cập nhật skill mới vào tài khoản -> chờ cài xong rồi mới gửi
     const r = await runner.workTask(collect
       ? { ...runnerPaths(), ...hooks(job), url: job.convUrl, collectOnly: true, expect }
@@ -219,18 +244,19 @@ async function runAll(job, collect = false) {
         ...runnerPaths(),
         ...hooks(job),
         skill: getSettings().skillName,
-        message: job.mode === 'scale' ? P.scaleMessage(msgArgs) : P.skillMessage(msgArgs),
+        message: job.mode === 'scale' ? P.briefMessage({ ...msgArgs, designs: job.designs }) : P.skillMessage(msgArgs),
         images: [job.design],
         expect,
         onUrl: (u) => { job.convUrl = u; saveJobFile(job); update(); },
       }, jlog(job));
     assignResults(job, r);
-    if (job.mode === 'scale') saveReport(job, P.parseReport(r.reply, r.blocks));
+    if (job.mode === 'scale') applyDesigns(job);
     job.stage = 'done';
   } catch (e) {
     if (job.cancelled) { job.stage = 'cancelled'; job.error = 'Đã huỷ.'; jlog(job)('Đã huỷ job.'); }
     else { job.stage = 'error'; job.error = e.message || String(e); jlog(job)('❌ ' + job.error); }
-    if (/chưa đăng nhập|hết hạn/i.test(job.error || '')) { setSettings({ loginOk: false }); setupChanged(); }
+    if (/Claude chưa đăng nhập|máy chưa có Claude/i.test(job.error || '')) { setSettings({ claudeOk: false }); setupChanged(); }
+    else if (/chưa đăng nhập|hết hạn/i.test(job.error || '')) { setSettings({ loginOk: false }); setupChanged(); }
     job.options.forEach((o) => { if (o.status === 'run') { o.status = 'error'; o.error = job.cancelled ? 'Đã huỷ.' : 'Không có kết quả.'; } });
   } finally {
     job.running = false; job.cancelled = false; job.step = null;
@@ -275,6 +301,8 @@ function setupStatus() {
     loginOk: !!st.loginOk,
     skillOk: !!st.skillOk,
     skillName: st.skillName,
+    claudeOk: !!st.claudeOk, claudeInstalled: !!claude.findClaude(), claudeEmail: st.claudeEmail || '',
+    claudeLoginUrl, // đang chờ nhân viên dán mã đăng nhập Claude
     outDir: st.outDir,
     // đã tự chọn / xác nhận thư mục lưu (máy cũ đã đổi thư mục khác mặc định cũng tính là đã chọn)
     outDirOk: !!st.outDirChosen || st.outDir !== defaults().outDir,
@@ -296,6 +324,7 @@ async function autoInstallSkill() {
 
 // Kiểm tra ngầm đăng nhập + skill; đã đăng nhập mà thiếu skill / skill cũ -> tự cài luôn.
 ipcMain.handle('setup:check', async () => {
+  await claudeCheck().catch(() => {}); // Claude: chỉ đọc trạng thái trên máy (~1–2s)
   let r;
   try { r = await runner.checkSetup({ ...runnerPaths(), skill: getSettings().skillName }, log); }
   catch (e) { log('Kiểm tra lỗi: ' + (e.message || e)); throw new Error('Chưa kiểm tra được — thử lại sau ít phút.'); }
@@ -313,6 +342,29 @@ function refreshSkillIfChanged() {
   log('Skill đi kèm app đã đổi — tự cập nhật vào tài khoản ChatGPT…');
   skillReady = autoInstallSkill().catch(() => {});
 }
+// Claude (bước phân tích của job Scale): cài bằng bộ cài chính thức + đăng nhập tài khoản Claude trên trình duyệt.
+async function claudeCheck() {
+  const s = await claude.status();
+  setSettings({ claudeOk: s.loggedIn, claudeEmail: s.email || '' });
+  setupChanged();
+  return setupStatus();
+}
+ipcMain.handle('setup:claudeCheck', () => claudeCheck());
+ipcMain.handle('setup:claudeCode', (_e, code) => claude.submitCode(code));
+ipcMain.handle('setup:claudeOpenLogin', () => claudeLoginUrl && shell.openExternal(claudeLoginUrl));
+ipcMain.handle('setup:claudeCancelLogin', () => claude.cancelLogin());
+ipcMain.handle('setup:claudeInstall', async () => {
+  try { await claude.install(log); } catch (e) { log('Cài Claude lỗi: ' + (e.message || e)); throw new Error('Chưa cài được Claude — kiểm tra mạng rồi bấm thử lại.'); }
+  return claudeCheck();
+});
+let claudeLoginUrl = null;
+ipcMain.handle('setup:claudeLogin', async () => {
+  const s = await claude.login(log, ({ url }) => { claudeLoginUrl = url; setupChanged(); });
+  claudeLoginUrl = null;
+  await claudeCheck();
+  if (!s.loggedIn) throw new Error('Chưa đăng nhập Claude — bấm Đăng nhập Claude và hoàn tất trên trình duyệt.');
+  return setupStatus();
+});
 ipcMain.handle('setup:installSkill', async () => { await autoInstallSkill(); return setupStatus(); });
 ipcMain.handle('setup:showSkillFile', () => shell.showItemInFolder(skillZip()));
 ipcMain.handle('setup:confirmOutDir', (_e, dir) => { setSettings({ outDir: dir || getSettings().outDir, outDirChosen: true }); return setupStatus(); });
@@ -400,6 +452,7 @@ ipcMain.handle('job:cancel', async (_e, id) => {
     saveJobFile(job); update();
   } else if (job.running) {
     job.cancelled = true;
+    claude.cancel(job.id);
     await runner.cancel(job.id);
   }
 });

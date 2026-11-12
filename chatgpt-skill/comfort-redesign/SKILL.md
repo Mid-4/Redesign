@@ -1,6 +1,6 @@
 ---
 name: comfort-redesign
-description: Redesign a print-on-demand design into 5 new directions for a chosen product (T-shirt, sweatshirt, hoodie, AOP apparel, pajamas, jersey, blanket, mug, flag, ornament, doormat, etc.) and create 5 square photo mockups; or (SCALE mode) research the market for the design across shopping sites and social platforms and create 4 scale designs as mockups with a research report. Use when the user attaches a design and asks for redesign options, scale designs, market research or product mockups, or mentions comfort-redesign.
+description: Redesign a print-on-demand design into 5 new directions for a chosen product (T-shirt, sweatshirt, hoodie, AOP apparel, pajamas, jersey, blanket, mug, flag, ornament, doormat, etc.) and create 5 square photo mockups; or (SCALE mode) render given scale-design briefs as square product mockups. Use when the user attaches a design and asks for redesign options, scale designs from briefs or product mockups, or mentions comfort-redesign.
 ---
 
 # Comfort Redesign
@@ -11,7 +11,7 @@ Never ask clarifying questions — use the defaults below and finish the whole t
 
 Two modes:
 - **REDESIGN** (default) — message starts with `Create 5 options` → Steps 1–4 below.
-- **SCALE** — message starts with `Scale the attached design` → follow the section **SCALE MODE** at the end (research + 4 scale designs). It uses the same Inputs, PRODUCTS and image rules.
+- **SCALE** — message starts with `Render N scale designs from these briefs` → follow the section **SCALE MODE** at the end (render the given briefs). It uses the same Inputs, PRODUCTS and image rules.
 
 ## Inputs (all optional except the image)
 - `Product: <name>` — one of the products in the PRODUCTS section. Default: `T-Shirt 2 mặt`.
@@ -98,51 +98,15 @@ If an option still failed, write `N. FAILED — <short reason>` on its line.
 ## Follow-up: regenerate one option
 If the user later writes `Regenerate #N` (optionally with a note), create ONE new image for direction N (same product, same direction, fresh variation, same rules) and reply with one line: `N. <direction name> — <product/shirt color> — <one-line style summary>`.
 
-## SCALE MODE
-"Scale" = make NEW designs that reuse the proven selling formula of the attached design for other audiences / phrases / occasions that the market already buys. Goal: 4 scale designs, each backed by research.
+## SCALE MODE (render from briefs)
+The research and design planning were already done. The message starts with `Render N scale designs from these briefs`, then gives Product / Model / Note and one brief per design: `#N <name> | Shirt color: <color> | <brief>`.
 
-### S1 — Analyze (do not print)
-Niche, target buyer, occasion, subject/art, every text, style, layout, and the "formula" that makes it sell (e.g. "funny [profession] phrase + retro sunset badge").
-
-### S2 — Research the market (use web search / browsing)
-Search for this niche, its keywords and similar designs on: Google Shopping, Etsy, Amazon (Merch / POD listings), eBay, Walmart, Redbubble, TeePublic, Pinterest, Reddit, Instagram, Facebook, TikTok and other e-commerce / POD stores and websites. If a site blocks access, use search results / snippets for it. Find:
-- best-selling and trending similar designs and which variations of the formula sell (sub-niches, audiences, professions, phrases, characters, holidays/seasons, personalization);
-- buyer keywords and tags; typical price range for the chosen product; signals of demand (reviews, sales badges, likes, comments, threads);
-- gaps — variations with demand but few good designs.
-Use at least 8 different sources and keep their URLs.
-
-### S3 — Pick 4 scale designs
-Each one keeps the recognizable formula of the original (style, layout energy, vibe, product fit) but changes the variable part (audience, phrase, subject, occasion…) toward a demand found in S2 — 4 clearly different angles. Rules:
-- Original artwork and wording only: never copy a competitor's design; no brand logos, trademarks, sports-team marks or celebrity names that are not already in the attached design.
-- New text is allowed: short, punchy, correctly spelled, in English unless the niche uses another language.
-- Product, model, colors, background and crop follow the same rules as Step 2–3 and PRODUCTS (for [CC] products pick a Comfort Colors color unless the user fixed one).
-
-### S4 — Generate 4 images
-4 separate square mockups, strictly ONE AT A TIME in order 1 → 4, same image rules as Step 3 (people rules, product crop, no watermark). Retry a failed image once. Do not stop before all 4 images exist.
-
-### S5 — Final reply
-After all images, reply with exactly two parts and nothing else.
-
-Part 1 — ONE fenced code block (```markdown) containing the report in Vietnamese (keep keywords / tags in English), first line exactly `# SCALE REPORT`:
+- Create N images strictly ONE AT A TIME in order #1 → #N, so image N is brief #N. Follow each brief exactly (subject, art details, EXACT text letter for letter, layout, style, palette, print placement, background). New text and new subjects in the briefs are intended — do not replace them with the original design.
+- The attached image is the original design: use it only as the reference for quality, rendering style and print feel.
+- Same image rules as Step 3 and the product / crop rules in PRODUCTS (people rules, no watermark). Use the shirt/base color given in each brief.
+- Retry a failed image once. Do not stop before all N images exist.
+- Final reply: exactly N lines and nothing else, line N describes image N:
 ```
-# SCALE REPORT
-## Phân tích design
-(ngách, khách mục tiêu, công thức bán chạy — 3–5 gạch đầu dòng)
-## Thị trường
-(từng sàn / mạng xã hội đã xem: điều tìm thấy + link nguồn dạng [tên](url))
-## Từ khoá & tag
-(10–20 từ khoá, phân cách bằng dấu phẩy)
-## Giá bán tham khảo
-(khoảng giá cho sản phẩm đã chọn, kèm nguồn)
-## 4 hướng scale
-1. **<tên>** — vì sao bán được + bằng chứng (link)
-2. ...
+1. <name> — <product/shirt color> — <one-line style summary>
 ```
-Part 2 — after the code block, exactly 4 lines, line N describes image N:
-```
-1. <scale name> — <product/shirt color> — <ngắn gọn: thay đổi gì so với design gốc>
-...
-4. ...
-```
-If an option still failed, write `N. FAILED — <short reason>`.
-`Regenerate #N` works the same for scale designs (same scale angle, fresh variation).
+  Write `N. FAILED — <short reason>` if one still failed. `Regenerate #N` works the same (same brief, fresh variation).

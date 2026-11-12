@@ -104,7 +104,14 @@ async function startJob(mode) {
   } catch (e) { $('err').textContent = e.message || String(e); }
 }
 $('btnStart').onclick = () => startJob('redesign');
-$('btnScale').onclick = () => startJob('scale');
+$('btnScale').onclick = async () => {
+  if (SETUP.st && !SETUP.st.claudeOk) {
+    await openSetup();
+    SETUP.err = 'Phân tích & Scale cần đăng nhập Claude — làm bước 3 rồi bấm lại.'; renderSetup();
+    return;
+  }
+  startJob('scale');
+};
 $('btnCollect').onclick = () => job && window.api.collect(job.id);
 $('btnOpenDir').onclick = () => job && window.api.openDir(job.id);
 
@@ -139,7 +146,7 @@ function renderAnalysis(j) {
   const modelLabel = { woman: 'Nữ', man: 'Nam', couple: 'Cặp đôi', auto: 'AI chọn' }[j.model] || '';
   const p = products.find((x) => x.name === j.product);
   $('anBody').innerHTML = `
-    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale (research thị trường + 4 mẫu scale)' : 'Redesign 5 hướng'}</p>
+    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale (Claude research thị trường + 5 mẫu scale)' : 'Redesign 5 hướng'}</p>
     <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''}</p>
     ${p?.cc ? `<p class="an-row"><b>Màu áo:</b>${esc(j.color || 'AI tự chọn theo từng hướng')}</p>` : ''}
     ${j.note ? `<p class="an-row"><b>Ghi chú:</b>${esc(j.note)}</p>` : ''}
@@ -183,7 +190,7 @@ function renderReport(j) {
   if (box.hidden) return;
   const html = j.report
     ? `<h4>📊 Báo cáo research thị trường</h4>${mdToHtml(j.report)}<p class="hint">Đã lưu: report.md trong thư mục job.</p>`
-    : `<p class="hint">${j.running || j.stage === 'queued' ? '📊 Báo cáo research thị trường sẽ hiện ở đây khi job xong.' : '📊 Chưa có báo cáo research.'}</p>`;
+    : `<p class="hint">${j.running || j.stage === 'queued' ? '📊 Claude đang phân tích & research — báo cáo sẽ hiện ở đây khi xong (trước khi tạo ảnh).' : '📊 Chưa có báo cáo research.'}</p>`;
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
 }
 
@@ -239,8 +246,13 @@ $('grid').addEventListener('input', (e) => {
 // ------------------------------- Hàng đợi job (giống Design Template) -------
 const STEPS = ['Gửi', 'Đang làm', 'Tải ảnh'];
 const STEP_IDX = { open: 0, send: 0, work: 1, download: 2 };
-const STEP_TEXT = { queue: 'Chờ tới lượt', open: 'Chuẩn bị', send: 'Gửi design', work: 'Đang làm', download: 'Tải ảnh về' };
-const EXPECT = { open: 20, send: 40, work: 420, download: 20 }; // giây dự kiến mỗi bước (để thanh chạy đều, không tới 100%)
+// Job Scale: Phân tích (Claude research) → Tạo ảnh → Tải ảnh.
+const SCALE_STEPS = ['Phân tích', 'Tạo ảnh', 'Tải ảnh'];
+const SCALE_IDX = { analyze: 0, open: 1, send: 1, work: 1, download: 2 };
+const stepsOf = (j) => (j.mode === 'scale' ? SCALE_STEPS : STEPS);
+const idxOf = (j) => (j.mode === 'scale' ? SCALE_IDX : STEP_IDX);
+const STEP_TEXT = { queue: 'Chờ tới lượt', analyze: 'Đang phân tích & research', open: 'Chuẩn bị', send: 'Gửi design', work: 'Đang làm', download: 'Tải ảnh về' };
+const EXPECT = { analyze: 360, open: 20, send: 40, work: 420, download: 20 }; // giây dự kiến mỗi bước (để thanh chạy đều, không tới 100%)
 const QTABS = [['all', 'Tất cả'], ['run', 'Đang chạy'], ['done', 'Hoàn tất'], ['fail', 'Lỗi / huỷ']];
 let qTab = 'all';
 
@@ -262,14 +274,15 @@ function statusChip(j) {
 }
 
 function progressHtml(j) {
-  const cur = j.stage === 'done' ? STEPS.length : j.running ? (STEP_IDX[j.step] ?? 0) : j.stage === 'queued' ? -1 : (STEP_IDX[j.step] ?? 1);
+  const steps = stepsOf(j), sIdx = idxOf(j);
+  const cur = j.stage === 'done' ? steps.length : j.running ? (sIdx[j.step] ?? 0) : j.stage === 'queued' ? -1 : (sIdx[j.step] ?? 1);
   let pct = 0;
   if (j.running && j.stepAt) {
-    const exp = j.mode === 'scale' && j.step === 'work' ? 900 : (EXPECT[j.step] || 60); // Scale research lâu hơn
+    const exp = EXPECT[j.step] || 60;
     pct = Math.min(95, Math.max(4, ((Date.now() - Date.parse(j.stepAt)) / 1000 / exp) * 100));
     if (j.step === 'work' && j.imgCount) pct = Math.max(pct, Math.min(95, (j.imgCount / j.options.length) * 100));
   }
-  const segs = STEPS.map((_, i) => {
+  const segs = steps.map((_, i) => {
     if (i < cur) return '<i><b style="width:100%"></b></i>';
     if (i === cur && j.running) return `<i class="run"><b style="width:${pct}%"></b></i>`;
     if (i === cur && (j.stage === 'error' || j.stage === 'cancelled')) return '<i class="bad"><b></b></i>';
@@ -381,7 +394,7 @@ $('btnTheme').onclick = () => {
 // ------------------------------- Cài đặt ban đầu (giống Design Template) -----
 // 4 bước cho máy nhân viên: Chrome · đăng nhập ChatGPT · cài skill · thư mục lưu. Tự mở khi chưa đủ.
 let SETUP = { st: null, busy: '', err: '' };
-const setupReady = (st) => !!(st && st.chrome && st.loginOk && st.skillOk && st.outDirOk);
+const setupReady = (st) => !!(st && st.chrome && st.loginOk && st.skillOk && st.claudeOk && st.outDirOk);
 
 async function setupAct(label, fn) {
   SETUP.busy = label; SETUP.err = ''; renderSetup();
@@ -403,7 +416,7 @@ function renderSetup() {
   const dis = (cond) => (busy || cond ? 'disabled' : '');
   const step = (n, title, ok, body) => `<div class="setup-step ${ok ? 'done' : ''}"><div class="setup-n">${ok ? '✓' : n}</div><div class="setup-b"><b>${title}</b>${body}</div></div>`;
   d.innerHTML = `<div class="dlg">
-    <div class="dlg-head col"><h3>Cài đặt ban đầu</h3><div class="hint">Làm 1 lần trên mỗi máy · 3 bước</div></div>
+    <div class="dlg-head col"><h3>Cài đặt ban đầu</h3><div class="hint">Làm 1 lần trên mỗi máy · 4 bước</div></div>
     <div class="dlg-body">
       ${step(1, 'Google Chrome', !!st.chrome, st.chrome
         ? `<span class="chip ok">Đã có Chrome</span><div class="p">${esc(st.chrome)}</div>`
@@ -415,7 +428,18 @@ function renderSetup() {
           : `<span class="chip warn">Đã đăng nhập · chưa chuẩn bị xong tài khoản</span><div class="btns"><button class="btn sm pri" data-s="skill" ${dis()}>Thử lại</button><button class="btn sm" data-s="login" ${dis()}>Đăng nhập tài khoản khác</button></div>`)
         : `<p class="hint">Bấm nút dưới: app mở cửa sổ Chrome riêng, đăng nhập tài khoản ChatGPT (work) của bạn. Đăng nhập xong cửa sổ tự đóng.</p>
            <div class="btns"><button class="btn sm pri" data-s="login" ${dis(!st.chrome)}>Đăng nhập ChatGPT</button></div>`)}
-      ${step(3, 'Chọn thư mục lưu kết quả', st.outDirOk, `<p class="hint">Mỗi job là 1 thư mục trong đây (design gốc + 5 mockup).</p>
+      ${step(3, 'Đăng nhập tài khoản Claude của bạn', st.claudeOk, st.claudeLoginUrl
+        ? `<p class="hint">Trình duyệt đã mở trang đăng nhập Claude. Đăng nhập tài khoản Claude của bạn → bấm <b>Authorize</b> → trang hiện 1 <b>mã</b>: bấm Copy rồi dán vào ô dưới.</p>
+           <div class="coderow"><input id="claudeCode" placeholder="Dán mã đăng nhập Claude vào đây" autocomplete="off"><button class="btn sm pri" data-s="claudeCode">Xác nhận</button></div>
+           <div class="btns"><button class="btn sm" data-s="claudeOpen">Mở lại trang đăng nhập</button><button class="btn sm" data-s="claudeCancel">Huỷ</button></div>`
+        : st.claudeOk
+        ? `<span class="chip ok">Đã đăng nhập${st.claudeEmail ? ` · ${esc(st.claudeEmail)}` : ''}</span><div class="btns"><button class="btn sm" data-s="claudeLogin" ${dis()}>Đăng nhập tài khoản khác</button></div>`
+        : st.claudeInstalled
+          ? `<p class="hint">Dùng cho nút <b>Phân tích &amp; Scale</b>. Bấm nút dưới: trình duyệt mở trang đăng nhập Claude, đăng nhập tài khoản Claude của bạn rồi bấm <b>Authorize</b>, xong quay lại app.</p>
+             <div class="btns"><button class="btn sm pri" data-s="claudeLogin" ${dis()}>Đăng nhập Claude</button><button class="btn sm" data-s="claudeCheck" ${dis()}>Kiểm tra lại</button></div>`
+          : `<p class="hint">Dùng cho nút <b>Phân tích &amp; Scale</b>. Máy chưa có Claude — bấm nút dưới, app tự tải và cài (~1–3 phút, không cần quyền admin), rồi đăng nhập.</p>
+             <div class="btns"><button class="btn sm pri" data-s="claudeInstall" ${dis()}>Cài Claude</button><button class="btn sm" data-s="claudeCheck" ${dis()}>Kiểm tra lại</button></div>`)}
+      ${step(4, 'Chọn thư mục lưu kết quả', st.outDirOk, `<p class="hint">Mỗi job là 1 thư mục trong đây (design gốc + 5 mockup).</p>
         <div class="p">${esc(st.outDir)}</div>
         <div class="btns"><button class="btn sm" data-s="pick" ${dis()}>Chọn thư mục khác…</button>${st.outDirOk ? '' : `<button class="btn sm pri" data-s="usedir" ${dis()}>Dùng thư mục này</button>`}</div>`)}
       ${SETUP.busy ? `<p class="hint">⏳ ${esc(SETUP.busy)}</p>` : ''}
@@ -441,6 +465,22 @@ $('dlgSetup').onclick = (e) => {
   });
   else if (a === 'skill') setupAct('Đang chuẩn bị tài khoản (~30–60 giây)…', () => S.installSkill());
   else if (a === 'check') setupAct('Đang kiểm tra tài khoản (~15–60 giây)…', () => S.check());
+  else if (a === 'claudeInstall') setupAct('Đang tải và cài Claude (~1–3 phút)…', async () => {
+    const r = await S.claudeInstall();
+    if (r.claudeOk) return r;
+    SETUP.busy = 'Đã cài Claude — đang chờ bạn đăng nhập Claude trên trình duyệt…'; renderSetup();
+    return S.claudeLogin();
+  });
+  else if (a === 'claudeLogin') setupAct('Đang chờ bạn đăng nhập Claude trên trình duyệt…', () => S.claudeLogin());
+  else if (a === 'claudeCode') {
+    const v = $('claudeCode')?.value.trim();
+    if (!v) { $('claudeCode')?.focus(); return; }
+    SETUP.busy = 'Đang xác nhận mã đăng nhập Claude…'; renderSetup();
+    S.claudeCode(v);
+  }
+  else if (a === 'claudeOpen') S.claudeOpenLogin();
+  else if (a === 'claudeCancel') S.claudeCancelLogin();
+  else if (a === 'claudeCheck') setupAct('Đang kiểm tra…', () => S.claudeCheck());
   else if (a === 'pick') setupAct('', async () => { const d = await window.api.pickDir(); return d ? S.confirmOutDir(d) : S.status(); });
   else if (a === 'usedir') setupAct('', () => S.confirmOutDir());
   else if (a === 'later' || a === 'done') $('dlgSetup').close();
@@ -485,6 +525,6 @@ window.api.update.onStatus(renderUpdate);
   applySetup();
   if (!setupReady(SETUP.st)) {
     await openSetup();
-    if (SETUP.st.chrome && (!SETUP.st.loginOk || !SETUP.st.skillOk)) setupAct('Đang kiểm tra tài khoản (~15–60 giây)…', () => window.api.setup.check());
+    if (SETUP.st.chrome && (!SETUP.st.loginOk || !SETUP.st.skillOk || !SETUP.st.claudeOk)) setupAct('Đang kiểm tra tài khoản (~15–60 giây)…', () => window.api.setup.check());
   }
 })();
