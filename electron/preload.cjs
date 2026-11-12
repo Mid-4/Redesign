@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   watch: (on) => ipcRenderer.invoke('chatgpt:watch', on),
   start: (payload) => ipcRenderer.invoke('job:start', payload),
   regen: (id, i, note) => ipcRenderer.invoke('job:regen', id, i, note),
+  pick: (id, picks) => ipcRenderer.invoke('job:pick', id, picks),
   remove: (id) => ipcRenderer.invoke('job:remove', id),
   cancel: (id) => ipcRenderer.invoke('job:cancel', id),
   retry: (id) => ipcRenderer.invoke('job:retry', id),

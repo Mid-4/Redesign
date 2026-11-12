@@ -202,8 +202,11 @@ function saveReport(job, md) {
 }
 
 /** Tên + màu + mô tả tiếng Việt của mẫu Scale lấy theo brief của Claude (giữ màu ChatGPT báo nếu có). */
+// Job Scale = tiến trình riêng 2 chặng: (1) Claude phân tích + research → 5 hướng, dừng ở stage 'review'
+// chờ nhân viên chọn hướng; (2) bấm "Tạo ảnh" → ChatGPT vẽ mockup cho các hướng đã chọn (job.picked).
+const pickedDesigns = (job) => (job.picked || []).map((k) => job.designs?.[k]).filter(Boolean);
 function applyDesigns(job) {
-  (job.designs || []).forEach((d, i) => {
+  pickedDesigns(job).forEach((d, i) => {
     const o = job.options[i];
     if (!o) return;
     o.name = d.name || o.name; o.summary = d.summary_vi || o.summary;
@@ -223,7 +226,7 @@ async function runAll(job, collect = false) {
   const expect = job.options.length;
   const msgArgs = { product: job.product, model: job.model, color: job.color, note: job.note };
   try {
-    // Job Scale: Claude phân tích design + research thị trường + viết 5 brief (làm 1 lần, Thử lại không làm lại).
+    // Job Scale chặng 1: Claude phân tích design + research thị trường + 5 hướng scale -> chờ chọn hướng.
     if (job.mode === 'scale' && !collect && !job.designs?.length) {
       setStep(job, 'analyze');
       const a = await claude.analyze({
@@ -233,9 +236,9 @@ async function runAll(job, collect = false) {
       if (job.cancelled) throw new Error('Đã huỷ.');
       job.designs = a.designs;
       saveReport(job, a.report);
-      applyDesigns(job);
-      saveJobFile(job); update();
-      job.step = 'open'; job.stepAt = new Date().toISOString();
+      job.stage = 'review';
+      jlog(job)('Phân tích xong — chờ chọn hướng để tạo ảnh.');
+      return;
     }
     await skillReady; // app vừa cập nhật skill mới vào tài khoản -> chờ cài xong rồi mới gửi
     const r = await runner.workTask(collect
@@ -244,7 +247,7 @@ async function runAll(job, collect = false) {
         ...runnerPaths(),
         ...hooks(job),
         skill: getSettings().skillName,
-        message: job.mode === 'scale' ? P.briefMessage({ ...msgArgs, designs: job.designs }) : P.skillMessage(msgArgs),
+        message: job.mode === 'scale' ? P.briefMessage({ ...msgArgs, designs: pickedDesigns(job) }) : P.skillMessage(msgArgs),
         images: [job.design],
         expect,
         onUrl: (u) => { job.convUrl = u; saveJobFile(job); update(); },
@@ -391,7 +394,8 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
     code: jobCode(scale ? 'SC' : 'CR'), createdAt: new Date().toISOString(), step: 'queue', stepAt: new Date().toISOString(),
     stage: 'queued', running: false, error: null, convUrl: null, options: [],
   };
-  job.options = Array.from({ length: scale ? P.SCALE_OPTIONS : P.NUM_OPTIONS }, (_, i) => ({ name: `Mẫu ${i + 1}`, shirt_color: job.color, summary: '', status: 'wait', file: null, error: null, t: 0 }));
+  // Job Scale chưa có mẫu nào: mẫu chỉ có sau khi nhân viên chọn hướng (job:pick).
+  job.options = Array.from({ length: scale ? 0 : P.NUM_OPTIONS }, (_, i) => ({ name: `Mẫu ${i + 1}`, shirt_color: job.color, summary: '', status: 'wait', file: null, error: null, t: 0 }));
   jobs.push(job);
   saveJobFile(job);
   if (runningCount() >= maxParallel()) jlog(job)(`Xếp hàng — đang chạy ${runningCount()}/${maxParallel()} job.`);
@@ -458,6 +462,21 @@ ipcMain.handle('job:cancel', async (_e, id) => {
 });
 
 // Thử lại: chạy lại job lỗi/huỷ từ đầu (hội thoại mới), giữ các mẫu đã xong.
+// Chọn hướng scale (chỉ số trong job.designs) -> tạo mẫu + xếp hàng chặng vẽ bằng ChatGPT.
+ipcMain.handle('job:pick', (_e, id, picks) => {
+  const job = findJob(id);
+  if (!job || job.mode !== 'scale' || job.stage !== 'review' || job.running) return;
+  const idx = [...new Set((picks || []).map(Number))].filter((k) => job.designs?.[k]).sort((a, b) => a - b);
+  if (!idx.length) return;
+  job.picked = idx;
+  job.options = idx.map(() => ({ name: '', shirt_color: job.color, summary: '', status: 'wait', file: null, error: null, t: 0 }));
+  applyDesigns(job);
+  job.stage = 'queued'; job.error = null; job.step = 'queue'; job.stepAt = new Date().toISOString();
+  jlog(job)(`Đã chọn ${idx.length} hướng: ${idx.map((k) => k + 1).join(', ')} — xếp hàng tạo ảnh.`);
+  saveJobFile(job);
+  pump();
+});
+
 ipcMain.handle('job:retry', (_e, id) => {
   const job = findJob(id);
   if (!job || job.running || !['error', 'cancelled'].includes(job.stage)) return;

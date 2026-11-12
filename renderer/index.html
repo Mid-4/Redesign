@@ -25,7 +25,7 @@
   <main>
     <section class="card side">
       <h2>Design gốc</h2>
-      <p class="hint">Thả design, chọn sản phẩm rồi bấm <b>Redesign</b> (5 hướng redesign mới: đổi bố cục và style, giữ art và text) hoặc <b>Phân tích &amp; Scale</b> (Claude phân tích design + research Google Shopping, Etsy, Amazon, eBay, Walmart, Redbubble, Reddit, Instagram, Facebook… rồi ra 5 mẫu scale kèm báo cáo). Mỗi mẫu là 1 mockup 1:1 có background.</p>
+      <p class="hint">Thả design, chọn sản phẩm rồi bấm <b>Redesign</b> (5 hướng redesign mới: đổi bố cục và style, giữ art và text) hoặc <b>Phân tích &amp; Scale</b> (tiến trình riêng: Claude phân tích design + research Google Shopping, Etsy, Amazon, eBay, Walmart, Redbubble, Reddit, Instagram, Facebook… → báo cáo + 5 hướng scale; chọn hướng muốn làm rồi mới tạo mockup). Mỗi mẫu là 1 mockup 1:1 có background.</p>
 
       <label class="drop" id="drop">
         <input type="file" id="inFile" accept="image/png,image/jpeg,image/webp" hidden>
@@ -61,7 +61,7 @@
 
       <div class="actions">
         <button class="btn pri" id="btnStart" disabled>Redesign</button>
-        <button class="btn pri alt" id="btnScale" disabled title="Claude phân tích + research các sàn TMĐT, mạng xã hội; ra 5 mẫu scale kèm báo cáo">🔎 Phân tích &amp; Scale</button>
+        <button class="btn pri alt" id="btnScale" disabled title="Claude phân tích + research các sàn TMĐT, mạng xã hội → báo cáo + 5 hướng scale để chọn">🔎 Phân tích &amp; Scale</button>
       </div>
       <p class="err" id="err"></p>
       <p class="hint" id="queueHint">Mỗi job chạy trong 1 cửa sổ Chrome riêng, nhiều job chạy song song (đặt số job ở ⚙ Cài đặt). Redesign khoảng 5–20 phút, Phân tích &amp; Scale khoảng 10–30 phút, ảnh tự lưu vào thư mục job.</p>
@@ -91,6 +91,7 @@
           </div>
         </div>
         <div class="card report" id="report" hidden></div>
+        <div class="card picker" id="picker" hidden></div>
         <div class="grid" id="grid"></div>
       </div>
     </div>

@@ -134,6 +134,7 @@ window.api.onJobs((list) => { jobs = list; render(); });
 const STATUS = { wait: ['Chờ', 'chip'], run: ['Đang tạo…', 'chip run'], done: ['Xong', 'chip ok'], error: ['Lỗi', 'chip bad'] };
 
 function stageText(j) {
+  if (j.stage === 'review') return 'Phân tích xong — xem báo cáo, chọn hướng muốn làm rồi bấm Tạo ảnh.';
   if (j.stage === 'queued') return 'Đang xếp hàng — sẽ chạy khi có job xong.';
   if (j.stage === 'error' || j.stage === 'cancelled') return 'Lỗi: ' + (j.error || '');
   const done = j.options.filter((o) => o.status === 'done').length;
@@ -146,7 +147,7 @@ function renderAnalysis(j) {
   const modelLabel = { woman: 'Nữ', man: 'Nam', couple: 'Cặp đôi', auto: 'AI chọn' }[j.model] || '';
   const p = products.find((x) => x.name === j.product);
   $('anBody').innerHTML = `
-    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale (Claude research thị trường + 5 mẫu scale)' : 'Redesign 5 hướng'}</p>
+    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale (Claude research → chọn hướng → tạo mockup)' : 'Redesign 5 hướng'}</p>
     <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''}</p>
     ${p?.cc ? `<p class="an-row"><b>Màu áo:</b>${esc(j.color || 'AI tự chọn theo từng hướng')}</p>` : ''}
     ${j.note ? `<p class="an-row"><b>Ghi chú:</b>${esc(j.note)}</p>` : ''}
@@ -190,7 +191,7 @@ function renderReport(j) {
   if (box.hidden) return;
   const html = j.report
     ? `<h4>📊 Báo cáo research thị trường</h4>${mdToHtml(j.report)}<p class="hint">Đã lưu: report.md trong thư mục job.</p>`
-    : `<p class="hint">${j.running || j.stage === 'queued' ? '📊 Claude đang phân tích & research — báo cáo sẽ hiện ở đây khi xong (trước khi tạo ảnh).' : '📊 Chưa có báo cáo research.'}</p>`;
+    : `<p class="hint">${j.running || j.stage === 'queued' ? '📊 Claude đang phân tích & research — báo cáo + 5 hướng scale sẽ hiện ở đây khi xong.' : '📊 Chưa có báo cáo research.'}</p>`;
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
 }
 
@@ -257,7 +258,7 @@ const QTABS = [['all', 'Tất cả'], ['run', 'Đang chạy'], ['done', 'Hoàn t
 let qTab = 'all';
 
 function jobState(j) {
-  if (j.running || j.stage === 'queued') return 'run';
+  if (j.running || j.stage === 'queued' || j.stage === 'review') return 'run';
   if (j.stage === 'error' || j.stage === 'cancelled') return 'fail';
   return 'done';
 }
@@ -266,6 +267,7 @@ const modelName = (m) => ({ woman: 'Nữ', man: 'Nam', couple: 'Cặp đôi', au
 
 function statusChip(j) {
   const done = j.options.filter((o) => o.status === 'done').length;
+  if (j.stage === 'review') return ['Chờ chọn hướng', 'chip warn'];
   if (j.stage === 'queued') return ['Chờ chạy', 'chip'];
   if (j.running) return ['Đang chạy', 'chip run'];
   if (j.stage === 'cancelled') return ['Đã huỷ', 'chip bad'];
@@ -275,7 +277,8 @@ function statusChip(j) {
 
 function progressHtml(j) {
   const steps = stepsOf(j), sIdx = idxOf(j);
-  const cur = j.stage === 'done' ? steps.length : j.running ? (sIdx[j.step] ?? 0) : j.stage === 'queued' ? -1 : (sIdx[j.step] ?? 1);
+  let cur = j.stage === 'done' ? steps.length : j.running ? (sIdx[j.step] ?? 0) : j.stage === 'queued' ? -1 : (sIdx[j.step] ?? 1);
+  if (j.mode === 'scale' && j.designs?.length && cur < 1) cur = 1; // đã phân tích xong
   let pct = 0;
   if (j.running && j.stepAt) {
     const exp = EXPECT[j.step] || 60;
@@ -289,7 +292,8 @@ function progressHtml(j) {
     return '<i><b></b></i>';
   }).join('');
   let text, start = '';
-  if (j.stage === 'queued') text = 'Chờ tới lượt';
+  if (j.stage === 'review') text = 'Phân tích xong · chọn hướng để tạo ảnh';
+  else if (j.stage === 'queued') text = 'Chờ tới lượt';
   else if (j.running) {
     text = STEP_TEXT[j.step] || 'Đang chạy';
     if (j.step === 'work' && j.imgCount) text += ` · ${j.imgCount}/${j.options.length} ảnh`;
@@ -303,7 +307,9 @@ function rowHtml(j) {
   const [label, cls] = statusChip(j);
   const sub = [j.product, modelName(j.model), j.color].filter(Boolean).join(' · ');
   const busy = j.running || j.options.some((o) => o.status === 'run');
-  const acts = [`<button class="btn sm" data-act="detail" data-id="${j.id}">Chi tiết</button>`];
+  const acts = [j.stage === 'review'
+    ? `<button class="btn sm pri" data-act="detail" data-id="${j.id}">Chọn hướng</button>`
+    : `<button class="btn sm" data-act="detail" data-id="${j.id}">Chi tiết</button>`];
   if (j.convUrl && !busy && j.stage !== 'queued' && j.options.some((o) => o.status !== 'done')) acts.push(`<button class="btn sm pri" data-act="collect" data-id="${j.id}">Lấy kết quả</button>`);
   if (['error', 'cancelled'].includes(j.stage) && !busy) acts.push(`<button class="btn sm" data-act="retry" data-id="${j.id}">Thử lại</button>`);
   if (j.stage === 'queued' || j.running) acts.push(`<button class="btn sm danger" data-act="cancel" data-id="${j.id}">Huỷ</button>`);
@@ -333,8 +339,45 @@ function renderDetail() {
   $('jobName').textContent = `${job.code || ''} · ${job.name}`;
   $('jobStage').textContent = stageText(job);
   renderAnalysis(job);
+  renderPicker(job);
+  $('grid').hidden = !job.options.length;
   renderGrid();
 }
+
+// ------------------------------- Chọn hướng scale (job Scale chờ chọn) -------
+const pickSel = {}; // job id -> Set chỉ số hướng đang tick (mặc định tick hết)
+function renderPicker(j) {
+  const box = $('picker');
+  box.hidden = !(j.mode === 'scale' && j.stage === 'review' && j.designs?.length);
+  if (box.hidden) { box.dataset.html = ''; return; }
+  const sel = pickSel[j.id] || (pickSel[j.id] = new Set(j.designs.map((_, k) => k)));
+  const html = `<h4>🎯 Chọn hướng scale muốn tạo ảnh</h4>
+    <p class="hint">Tick các hướng muốn làm (xem lý do ở báo cáo bên trên). Mỗi hướng tạo 1 mockup 1:1.</p>
+    <div class="pick-grid">${j.designs.map((d, k) => `<div class="pick ${sel.has(k) ? 'on' : ''}">
+      <label class="ph"><input type="checkbox" data-pick="${k}" ${sel.has(k) ? 'checked' : ''}>${k + 1} · ${esc(d.name)}</label>
+      <span class="pm"><i class="sw" style="${swatch(j.color || d.shirt_color)}"></i>${esc(j.color || d.shirt_color || '')}</span>
+      <p>${esc(d.summary_vi || '')}</p>
+      <details><summary>Mô tả chi tiết</summary>${esc(d.brief || '')}</details>
+    </div>`).join('')}</div>
+    <div class="pick-foot"><button class="btn pri" id="btnPick" ${sel.size ? '' : 'disabled'}>🎨 Tạo ảnh ${sel.size} hướng đã chọn</button>
+      <span class="hint">Chưa chọn thì job đứng chờ, không tốn lượt tạo ảnh.</span></div>`;
+  if (box.dataset.html !== html) {
+    const open = [...box.querySelectorAll('details')].map((d) => d.open);
+    box.innerHTML = html; box.dataset.html = html;
+    box.querySelectorAll('details').forEach((d, k) => { d.open = !!open[k]; });
+  }
+}
+$('picker').addEventListener('change', (e) => {
+  const c = e.target.closest('[data-pick]'); if (!c || !job) return;
+  const sel = pickSel[job.id];
+  c.checked ? sel.add(Number(c.dataset.pick)) : sel.delete(Number(c.dataset.pick));
+  renderPicker(job);
+});
+$('picker').addEventListener('click', async (e) => {
+  if (!e.target.closest('#btnPick') || !job) return;
+  const sel = [...(pickSel[job.id] || [])];
+  if (sel.length) await window.api.pick(job.id, sel);
+});
 
 function render() {
   refreshButtons();
