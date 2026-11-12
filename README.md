@@ -18,8 +18,17 @@ Luồng: thả 1 design, chọn **sản phẩm** (28 loại: T-Shirt/Sweatshirt 
 ```
 npm install
 npm start          # terminal VSCode: unset ELECTRON_RUN_AS_NODE trước
-npm run dist:win   # release/Comfort-Redesign-x.y.z-portable.exe (dữ liệu app: %APPDATA%\comfort-redesign)
+npm run check      # kiểm tra cú pháp + sản phẩm khớp SKILL.md + zip skill mới nhất
+npm run dist:win   # release/Comfort-Redesign-Setup-x.y.z.exe (bộ cài, không đăng)
 ```
+Dữ liệu app: `%APPDATA%\comfort-redesign` (đăng nhập ChatGPT, cài đặt, jobs/*.json, app.log).
+
+## Phát hành bản mới (tự cập nhật cho nhân viên)
+- Code: `Mid-4/comfort-redesign` (private) · Bộ cài + cập nhật: `Mid-4/comfort-redesign-releases` (public).
+- Token GitHub fine-grained, quyền **Contents: Read and write** trên 2 repo trên → dán vào file `.gh-token` (đã gitignore).
+- Commit hết thay đổi rồi chạy `npm run release` (patch) / `npm run release -- minor`. Lỗi lúc build/đăng: `npm run release -- retry`.
+- Máy nhân viên đã cài bản Setup: mở app tự tải bản mới → nút "⟳ Khởi động lại & cập nhật" (hoặc tắt app là tự cài).
+- Lần đầu gửi nhân viên: file `release/Comfort-Redesign-Setup-x.y.z.exe` (bản portable cũ không tự cập nhật được).
 
 ## File chính
 - `chatgpt-skill/`: skill cho ChatGPT Work (prompt đầy đủ)
