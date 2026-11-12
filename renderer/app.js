@@ -432,7 +432,66 @@ $('btnSettings').onclick = async () => {
   const s = await window.api.getSettings();
   $('setOut').value = s.outDir; $('setParallel').value = String(s.parallel || 4);
   $('dlgSettings').showModal();
+  const a = await window.api.account.get().catch(() => null);
+  renderAccount(a);
+  // Chưa có thông tin hoặc đã cũ hơn 30 phút -> tự làm mới.
+  const at = Date.parse(a?.claude?.checkedAt || '') || 0;
+  if (Date.now() - at > 30 * 60 * 1000) refreshAccount();
 };
+
+// ------------------------------- Tài khoản & mức dùng -------------------------
+const PLAN = { team: 'Team', plus: 'Plus', pro: 'Pro', free: 'Free', enterprise: 'Enterprise', business: 'Business', edu: 'Edu', max: 'Max' };
+const planName = (p) => PLAN[String(p || '').toLowerCase()] || p || '—';
+const fmtTime = (iso) => {
+  const d = new Date(iso), p = (n) => String(n).padStart(2, '0');
+  if (isNaN(d)) return '';
+  return `${p(d.getHours())}:${p(d.getMinutes())} ${p(d.getDate())}/${p(d.getMonth() + 1)}${d.getFullYear() !== new Date().getFullYear() ? `/${d.getFullYear()}` : ''}`;
+};
+const ago = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return !iso || isNaN(m) ? '' : m < 1 ? 'vừa xong' : m < 60 ? `${m} phút trước` : `${Math.round(m / 60)} giờ trước`; };
+let acctBusy = false;
+function meter(label, w) {
+  if (!w) return '';
+  const cls = w.used >= 90 ? 'bad' : w.used >= 70 ? 'warn' : '';
+  return `<div class="meter"><span>${label}</span><i><b class="${cls}" style="width:${Math.min(100, w.used)}%"></b></i><span>${w.used}% · reset ${esc(fmtTime(w.resetsAt))}</span></div>`;
+}
+function renderAccount(a) {
+  const g = a?.chatgpt || {}, c = a?.claude || {}, st = a?.stats || {}, u = c.usage;
+  $('acctBox').innerHTML = `
+    <div class="acct-card">
+      <div class="ah"><b>ChatGPT</b>${g.email ? `<span class="chip ok">${esc(planName(g.plan))}${g.structure === 'workspace' ? ' · workspace' : ''}</span>` : '<span class="chip">Chưa có thông tin</span>'}</div>
+      ${g.email ? `<div class="ar"><b>${esc(g.email)}</b>${g.name ? ` · ${esc(g.name)}` : ''}</div>
+      <div class="ar">Phiên đăng nhập hết hạn: ${esc(fmtTime(g.expires))}${g.checkedAt ? ` · kiểm tra ${esc(ago(g.checkedAt))}` : ''}</div>` : ''}
+      ${g.error ? `<div class="ar err">${esc(g.error)}</div>` : ''}
+      <div class="ar">ChatGPT không công bố hạn mức tạo ảnh — xem số ảnh app đã tạo bên dưới.</div>
+    </div>
+    <div class="acct-card">
+      <div class="ah"><b>Claude</b>${c.loggedIn ? `<span class="chip ok">${esc(planName(c.plan))}${c.org ? ` · ${esc(c.org)}` : ''}</span>` : `<span class="chip ${c.checkedAt ? 'bad' : ''}">${c.checkedAt ? 'Chưa đăng nhập' : 'Chưa có thông tin'}</span>`}</div>
+      ${c.email ? `<div class="ar"><b>${esc(c.email)}</b></div>` : ''}
+      ${u ? meter('5 giờ', u.five_hour) + meter('7 ngày', u.seven_day) + (u.status && u.status !== 'allowed' ? `<div class="ar err">Đang bị giới hạn (${esc(u.status)}) — bước phân tích sẽ lỗi tới lúc reset.</div>` : '') : (c.loggedIn ? '<div class="ar">Chưa đọc được mức dùng.</div>' : '')}
+      ${c.usageAt ? `<div class="ar">Mức dùng cập nhật ${esc(ago(c.usageAt))}</div>` : ''}
+    </div>
+    <div class="acct-stats">
+      <div><b>${st.imagesToday ?? 0}</b>ảnh hôm nay · ${st.images7 ?? 0} / 7 ngày</div>
+      <div><b>${st.jobsToday ?? 0}</b>job hôm nay · ${st.jobs7 ?? 0} / 7 ngày</div>
+      <div><b>${st.analysesToday ?? 0}</b>lượt Claude phân tích hôm nay · ${st.analyses7 ?? 0} / 7 ngày</div>
+    </div>
+    <div class="row-btns"><button class="btn sm" id="btnAcctSwitch">Đổi tài khoản ChatGPT / Claude…</button></div>`;
+  $('btnAcctRefresh').disabled = acctBusy;
+  $('btnAcctRefresh').textContent = acctBusy ? '⏳ Đang kiểm tra…' : '⟳ Làm mới';
+}
+async function refreshAccount() {
+  if (acctBusy) return;
+  acctBusy = true;
+  renderAccount(await window.api.account.get().catch(() => null));
+  let a = null;
+  try { a = await window.api.account.refresh(); } catch (e) { a = await window.api.account.get().catch(() => null); }
+  acctBusy = false;
+  renderAccount(a);
+}
+$('btnAcctRefresh').onclick = () => refreshAccount();
+$('acctBox').addEventListener('click', (e) => {
+  if (e.target.closest('#btnAcctSwitch')) { $('dlgSettings').close(); openSetup(); }
+});
 $('btnPickDir').onclick = async () => { const d = await window.api.pickDir(); if (d) $('setOut').value = d; };
 $('btnSetCancel').onclick = () => $('dlgSettings').close();
 $('btnSetSave').onclick = async () => {

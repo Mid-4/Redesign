@@ -31,7 +31,10 @@ async function status() {
   const exe = findClaude();
   if (!exe) return { installed: false, loggedIn: false };
   const r = await run(exe, ['auth', 'status', '--json']);
-  try { const j = JSON.parse(r.out); return { installed: true, loggedIn: !!j.loggedIn, email: j.email || '' }; }
+  try {
+    const j = JSON.parse(r.out);
+    return { installed: true, loggedIn: !!j.loggedIn, email: j.email || '', org: j.orgName || '', plan: j.subscriptionType || '', expires: j.loginExpiresAt || '' };
+  }
   catch { return { installed: true, loggedIn: false }; }
 }
 
@@ -151,6 +154,35 @@ function analyze({ key, designFile, prompt, workDir, tools = 'Read,WebSearch,Web
   });
 }
 
+/**
+ * Mức dùng gói Claude (giới hạn 5 giờ / 7 ngày): chạy 1 câu rất ngắn (model nhỏ, không công cụ) và đọc
+ * sự kiện "rate_limit_event" Claude Code trả kèm. -> { five_hour:{used %, resetsAt}, seven_day:{…}, status }
+ */
+function usage() {
+  const exe = findClaude();
+  if (!exe) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const p = spawn(exe, ['-p', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--tools', '',
+      '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence'], { windowsHide: true, cwd: os.tmpdir() });
+    let out = '';
+    p.stdout.on('data', (d) => { out += d; });
+    const timer = setTimeout(() => p.kill(), 60000);
+    p.on('error', () => { clearTimeout(timer); resolve(null); });
+    p.on('close', () => {
+      clearTimeout(timer);
+      let info = null;
+      for (const line of out.split('\n')) {
+        try { const j = JSON.parse(line); if (j.type === 'rate_limit_event') info = j.rate_limit_info; } catch {}
+      }
+      if (!info) return resolve(null);
+      const w = info.unifiedWindows || {};
+      const win = (x) => x && { used: Math.round((x.utilization || 0) * 100), resetsAt: x.resetsAt ? new Date(x.resetsAt * 1000).toISOString() : '', status: x.status || '' };
+      resolve({ status: info.status || '', five_hour: win(w.five_hour), seven_day: win(w.seven_day) });
+    });
+    p.stdin.end('Reply with just: ok');
+  });
+}
+
 function cancel(key) { const p = procs.get(key); if (p) { p.cancelled = true; p.kill(); } }
 
-module.exports = { findClaude, status, install, login, submitCode, cancelLogin, analyze, cancel };
+module.exports = { findClaude, status, usage, install, login, submitCode, cancelLogin, analyze, cancel };

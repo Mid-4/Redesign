@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
   onSetup: on('setup:update'),
   update: { get: () => ipcRenderer.invoke('update:get'), install: () => ipcRenderer.invoke('update:install'), onStatus: on('update:status') },
   version: () => ipcRenderer.invoke('app:version'),
+  account: { get: () => ipcRenderer.invoke('account:get'), refresh: () => ipcRenderer.invoke('account:refresh') },
   onJobs: on('jobs:update'),
   onLog: on('log'),
 });

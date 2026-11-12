@@ -703,6 +703,19 @@ const SKILLS_URL = 'https://chatgpt.com/skills';
 const norm = (t) => String(t || '').toLowerCase().replace(/[\s_-]+/g, '');
 
 /** Trang Skills có skill tên `skill` chưa (so khớp ĐÚNG tên, không tính tên file .zip đang upload). */
+/**
+ * Tài khoản ChatGPT đang đăng nhập: đọc phiên (/api/auth/session — đúng lời gọi trang ChatGPT tự gọi khi mở).
+ * Chỉ lấy email / tên / gói / loại tài khoản / hạn phiên, KHÔNG giữ token. -> { email, name, plan, structure, expires }
+ */
+function accountInfo(payload, log = noop) {
+  return inTab(payload, log, async () => {
+    await ensureChatReady(log, false);
+    const s = await pg().evaluate(() => fetch('/api/auth/session', { credentials: 'include' }).then((r) => r.json()).catch(() => null));
+    if (!s?.user) throw new Error('Không đọc được thông tin tài khoản ChatGPT.');
+    return { email: s.user.email || '', name: s.user.name || '', plan: s.account?.planType || '', structure: s.account?.structure || '', expires: s.expires || '' };
+  });
+}
+
 async function hasSkill(skill) {
   return pg().evaluate((want) => {
     const n = (t) => String(t || '').toLowerCase().replace(/[\s_-]+/g, '');
@@ -817,4 +830,4 @@ async function close() {
   context = null; mainPage = null;
 }
 
-module.exports = { workTask, prepare, setWatch, cancel, checkSetup, installSkill, close };
+module.exports = { accountInfo, workTask, prepare, setWatch, cancel, checkSetup, installSkill, close };

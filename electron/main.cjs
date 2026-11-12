@@ -433,6 +433,48 @@ ipcMain.handle('setup:claudeLogin', async () => {
   if (!s.loggedIn) throw new Error('Chưa đăng nhập Claude — bấm Đăng nhập Claude và hoàn tất trên trình duyệt.');
   return setupStatus();
 });
+// ------------------------------- Tài khoản & mức dùng (⚙ Cài đặt) ----------------
+/** Thống kê trong app: job + ảnh đã tạo hôm nay / 7 ngày (kể cả job đã ẩn khỏi danh sách). */
+function usageStats() {
+  const metas = [];
+  try {
+    for (const f of fs.readdirSync(jobsStore()).filter((x) => x.endsWith('.json'))) {
+      try { metas.push(JSON.parse(fs.readFileSync(path.join(jobsStore(), f), 'utf8'))); } catch {}
+    }
+  } catch {}
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const t0 = today.getTime(), t7 = t0 - 6 * 86400000;
+  const s = { jobsToday: 0, jobs7: 0, imagesToday: 0, images7: 0, analysesToday: 0, analyses7: 0 };
+  for (const m of metas) {
+    const c = Date.parse(m.createdAt || '') || 0;
+    if (c >= t0) s.jobsToday++;
+    if (c >= t7) { s.jobs7++; if (m.designs?.length) { s.analyses7++; if (c >= t0) s.analysesToday++; } }
+    for (const o of m.options || []) {
+      if (!o.file || !o.t) continue;
+      if (o.t >= t0) s.imagesToday++;
+      if (o.t >= t7) s.images7++;
+    }
+  }
+  return s;
+}
+ipcMain.handle('account:get', () => ({ ...(getSettings().account || {}), stats: usageStats() }));
+// Làm mới: ChatGPT mở ngầm 1 cửa sổ đọc phiên (~10–20s); Claude đọc trạng thái + 1 câu ngắn để lấy mức dùng (~5s).
+ipcMain.handle('account:refresh', async () => {
+  const [g, c, u] = await Promise.all([
+    runner.accountInfo({ ...runnerPaths(), key: 'account' }, log).then((x) => ({ ...x, ok: true }), (e) => ({ ok: false, error: e.message || String(e) })),
+    claude.status().catch(() => ({})),
+    claude.usage().catch(() => null),
+  ]);
+  const prev = getSettings().account || {};
+  const account = {
+    chatgpt: g.ok ? { ...g, checkedAt: new Date().toISOString() } : { ...(prev.chatgpt || {}), error: g.error },
+    claude: { ...c, usage: u || prev.claude?.usage || null, usageAt: u ? new Date().toISOString() : prev.claude?.usageAt || '', checkedAt: new Date().toISOString() },
+  };
+  setSettings({ account, ...(g.ok ? { loginOk: true } : {}), claudeOk: !!c.loggedIn, claudeEmail: c.email || '' });
+  setupChanged();
+  return { ...account, stats: usageStats() };
+});
+
 ipcMain.handle('setup:installSkill', async () => { await autoInstallSkill(); return setupStatus(); });
 ipcMain.handle('setup:showSkillFile', () => shell.showItemInFolder(skillZip()));
 ipcMain.handle('setup:confirmOutDir', (_e, dir) => { setSettings({ outDir: dir || getSettings().outDir, outDirChosen: true }); return setupStatus(); });

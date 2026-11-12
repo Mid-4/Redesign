@@ -104,6 +104,20 @@ main { display: grid; grid-template-columns: 360px 1fr; gap: 18px; padding: 18px
 .setup-b p { margin: 0; }
 .setup-b .p { font-size: 11.5px; word-break: break-all; color: var(--sub); }
 .setup-b .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.acct-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.acct { display: grid; gap: 10px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.acct-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; }
+.acct-card .ah { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.acct-card .ah b { font-size: 14px; }
+.acct-card .ar { font-size: 12.5px; color: var(--sub); }
+.acct-card .ar b { color: var(--text); font-weight: 600; }
+.meter { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; font-size: 12px; color: var(--sub); }
+.meter i { height: 6px; border-radius: 3px; background: var(--track, #e5e7eb); overflow: hidden; display: block; }
+.meter i b { display: block; height: 100%; background: var(--ok); }
+.meter i b.warn { background: #e0a020; } .meter i b.bad { background: var(--bad); }
+.acct-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.acct-stats div { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 12px; color: var(--sub); }
+.acct-stats div b { display: block; font-size: 18px; color: var(--text); }
 .coderow { display: flex; gap: 6px; width: 100%; }
 .coderow input { flex: 1; min-width: 0; }
 .dlg-head.col { flex-direction: column; align-items: flex-start; gap: 2px; }
