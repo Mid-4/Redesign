@@ -4,6 +4,8 @@ App Electron (.exe), chạy qua **ChatGPT Work + skill `comfort-redesign`** bằ
 
 Luồng: thả 1 design, chọn **sản phẩm** (28 loại: T-Shirt/Sweatshirt 1–2 mặt, AOP, pajamas, jersey, blanket, mug, flag, ornament, doormat…) + **người mẫu** (đồ mặc) → app mở tab **Work**, đính kèm design, gõ `@comfort-redesign` + 1 dòng tham số (sản phẩm, người mẫu, màu áo, ghi chú) → agent Work phân tích, lên **5 hướng redesign** (đổi bố cục + style, giữ art + text) làm **mặt sau**, thêm **mặt trước** hợp bộ, tạo **5 mockup 1:1** (nữ mặc Comfort Colors 1717, 2 mặt trước/sau, khung cằm → hông, có background) → app tải 5 ảnh về.
 
+- **Phân tích & Scale:** nút thứ 2 → cùng skill, chế độ `SCALE MODE` (tin nhắn `Scale the attached design…`): Work research Google Shopping, Etsy, Amazon, eBay, Walmart, Redbubble, Reddit, Instagram, Facebook… → **4 mockup scale** + báo cáo (khối code `# SCALE REPORT`) → app hiện báo cáo ở trang chi tiết + lưu `report.md` trong thư mục job.
+- **Skill tự cập nhật:** đổi SKILL.md → nén lại zip → bản app mới mở lên tự cài lại skill ngầm vào tài khoản (so hash zip).
 - **Prompt nằm trong skill:** [chatgpt-skill/comfort-redesign/SKILL.md](chatgpt-skill/comfort-redesign/SKILL.md). Sửa prompt = sửa skill rồi upload lại (`comfort-redesign.zip`), không cần build lại app.
 - **Cài skill (1 lần):** ChatGPT → Plugins → Skills (`chatgpt.com/skills`) → Add → upload `chatgpt-skill/comfort-redesign.zip`.
 - **Tạo lại 1 mẫu:** app gửi `Regenerate #N` vào đúng hội thoại Work của job (hội thoại được giữ lại, nút "Mở trong ChatGPT").

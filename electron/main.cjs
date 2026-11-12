@@ -63,9 +63,9 @@ function setStep(job, step) {
   update();
 }
 
-function jobCode() {
+function jobCode(prefix = 'CR') {
   const d = new Date(), p = (n) => String(n).padStart(2, '0');
-  return `CR-${String(d.getFullYear()).slice(2)}${p(d.getMonth() + 1)}${p(d.getDate())}-${Math.random().toString(16).slice(2, 6).toUpperCase()}`;
+  return `${prefix}-${String(d.getFullYear()).slice(2)}${p(d.getMonth() + 1)}${p(d.getDate())}-${Math.random().toString(16).slice(2, 6).toUpperCase()}`;
 }
 
 /**
@@ -174,7 +174,7 @@ function saveJobFile(job) {
 /** Gán ảnh + tên hướng vào 5 mẫu (bỏ qua mẫu đã xong và mẫu skill báo FAILED). */
 function assignResults(job, r) {
   if (r.url) job.convUrl = r.url;
-  const info = P.parseLines(r.reply).slice(-P.NUM_OPTIONS);
+  const info = P.parseLines(r.reply).slice(-job.options.length);
   job.options.forEach((o, i) => applyInfo(o, info[i]));
   const slots = job.options.map((_, i) => i).filter((i) => !info[i]?.failed);
   r.files.forEach((f, k) => {
@@ -193,6 +193,13 @@ function assignResults(job, r) {
 const hooks = (job) => ({ key: job.id, onStep: (st) => setStep(job, st), onImages: (n) => { job.imgCount = n; update(); } });
 
 /** Chạy việc chính (gửi skill) hoặc collect = chỉ lấy kết quả từ hội thoại đã có. */
+/** Báo cáo research của job Scale: hiện ở trang chi tiết + lưu report.md trong thư mục job. */
+function saveReport(job, md) {
+  if (!md) { jlog(job)('⚠️ Không đọc được báo cáo research trong trả lời của ChatGPT.'); return; }
+  job.report = md;
+  try { fs.writeFileSync(path.join(job.dir, 'report.md'), `# Báo cáo research — ${job.name}\n\n${md}\n`); } catch {}
+}
+
 async function runAll(job, collect = false) {
   if (!job.design && !collect) {
     const ext = path.extname(job.designFile).slice(1).replace('jpg', 'jpeg');
@@ -202,19 +209,23 @@ async function runAll(job, collect = false) {
   job.step = 'open'; job.stepAt = new Date().toISOString();
   job.options.forEach((o) => { if (o.status !== 'done') { o.status = 'run'; o.error = null; } });
   update();
+  const expect = job.options.length;
+  const msgArgs = { product: job.product, model: job.model, color: job.color, note: job.note };
   try {
+    await skillReady; // app vừa cập nhật skill mới vào tài khoản -> chờ cài xong rồi mới gửi
     const r = await runner.workTask(collect
-      ? { ...runnerPaths(), ...hooks(job), url: job.convUrl, collectOnly: true, expect: P.NUM_OPTIONS }
+      ? { ...runnerPaths(), ...hooks(job), url: job.convUrl, collectOnly: true, expect }
       : {
         ...runnerPaths(),
         ...hooks(job),
         skill: getSettings().skillName,
-        message: P.skillMessage({ product: job.product, model: job.model, color: job.color, note: job.note }),
+        message: job.mode === 'scale' ? P.scaleMessage(msgArgs) : P.skillMessage(msgArgs),
         images: [job.design],
-        expect: P.NUM_OPTIONS,
+        expect,
         onUrl: (u) => { job.convUrl = u; saveJobFile(job); update(); },
       }, jlog(job));
     assignResults(job, r);
+    if (job.mode === 'scale') saveReport(job, P.parseReport(r.reply, r.blocks));
     job.stage = 'done';
   } catch (e) {
     if (job.cancelled) { job.stage = 'cancelled'; job.error = 'Đã huỷ.'; jlog(job)('Đã huỷ job.'); }
@@ -294,15 +305,25 @@ ipcMain.handle('setup:check', async () => {
   if (r.loggedIn && !current) await autoInstallSkill();
   return setupStatus();
 });
+// App mới cài bản skill khác (VD thêm chế độ Scale) -> tự cài lại ngầm khi mở app; job chờ cài xong mới gửi.
+let skillReady = Promise.resolve();
+function refreshSkillIfChanged() {
+  const st = getSettings();
+  if (!st.loginOk || !st.skillOk || !skillHash() || st.skillHash === skillHash()) return;
+  log('Skill đi kèm app đã đổi — tự cập nhật vào tài khoản ChatGPT…');
+  skillReady = autoInstallSkill().catch(() => {});
+}
 ipcMain.handle('setup:installSkill', async () => { await autoInstallSkill(); return setupStatus(); });
 ipcMain.handle('setup:showSkillFile', () => shell.showItemInFolder(skillZip()));
 ipcMain.handle('setup:confirmOutDir', (_e, dir) => { setSettings({ outDir: dir || getSettings().outDir, outDirChosen: true }); return setupStatus(); });
 ipcMain.handle('setup:getChrome', () => shell.openExternal('https://www.google.com/chrome/'));
 ipcMain.handle('chatgpt:watch', (_e, on) => runner.setWatch(on, log));
 
-ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note }) => {
+// mode: 'redesign' (5 hướng redesign) | 'scale' (research các sàn + 4 mẫu scale + báo cáo).
+ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note, mode }) => {
   const prod = P.findProduct(product);
-  const base = `${stamp()}-${slug(prod.name)}-${slug(path.parse(fileName || 'design').name)}`;
+  const scale = mode === 'scale';
+  const base = `${stamp()}-${scale ? 'scale-' : ''}${slug(prod.name)}-${slug(path.parse(fileName || 'design').name)}`;
   let name = base;
   for (let k = 2; fs.existsSync(path.join(getSettings().outDir, name)); k++) name = `${base}-${k}`;
   const dir = path.join(getSettings().outDir, name);
@@ -313,11 +334,12 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
   fs.writeFileSync(designFile, Buffer.from(base64, 'base64'));
   const job = {
     id: ++seq, name, dir, designFile, design: { base64, mimeType },
+    mode: scale ? 'scale' : 'redesign', report: '',
     product: prod.name, model: prod.wear ? (model || 'woman') : '', color: prod.cc ? (color || '') : '', note: note || '',
-    code: jobCode(), createdAt: new Date().toISOString(), step: 'queue', stepAt: new Date().toISOString(),
+    code: jobCode(scale ? 'SC' : 'CR'), createdAt: new Date().toISOString(), step: 'queue', stepAt: new Date().toISOString(),
     stage: 'queued', running: false, error: null, convUrl: null, options: [],
   };
-  job.options = Array.from({ length: P.NUM_OPTIONS }, (_, i) => ({ name: `Mẫu ${i + 1}`, shirt_color: job.color, summary: '', status: 'wait', file: null, error: null, t: 0 }));
+  job.options = Array.from({ length: scale ? P.SCALE_OPTIONS : P.NUM_OPTIONS }, (_, i) => ({ name: `Mẫu ${i + 1}`, shirt_color: job.color, summary: '', status: 'wait', file: null, error: null, t: 0 }));
   jobs.push(job);
   saveJobFile(job);
   if (runningCount() >= maxParallel()) jlog(job)(`Xếp hàng — đang chạy ${runningCount()}/${maxParallel()} job.`);
@@ -415,6 +437,7 @@ function createWindow() {
 app.whenReady().then(() => {
   try { if (fs.statSync(logFile()).size > 2e6) fs.unlinkSync(logFile()); } catch {}
   loadHistory(); createWindow();
+  refreshSkillIfChanged();
   // Lỗi kiểm tra cập nhật không bao giờ được chặn app khởi động.
   try { setupAutoUpdate(); } catch (e) { log('[update] lỗi khởi tạo: ' + (e?.message || e)); }
 });

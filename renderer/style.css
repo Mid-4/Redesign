@@ -63,6 +63,17 @@ main { display: grid; grid-template-columns: 360px 1fr; gap: 18px; padding: 18px
 .sw { flex: none; width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line); background: conic-gradient(#f1ead8, #d9646a, #a8dcc8, #5f7389, #4a4a48, #f1ead8); }
 .actions { display: flex; gap: 8px; }
 .actions .pri { flex: 1; padding: 10px; }
+.btn.pri.alt { background: var(--card); color: var(--acc); border-color: var(--acc); }
+.tag.scale { background: var(--run-bg); color: var(--acc); border-color: var(--acc); font-weight: 600; font-size: 11px; padding: 0 6px; }
+.report { margin-bottom: 14px; line-height: 1.55; }
+.report h4 { margin: 14px 0 6px; font-size: 15px; }
+.report h4:first-child { margin-top: 0; }
+.report h5 { margin: 10px 0 4px; font-size: 13.5px; }
+.report p { margin: 4px 0; }
+.report ul, .report ol { margin: 4px 0 8px; padding-left: 22px; }
+.report li { margin: 2px 0; }
+.report a { color: var(--acc); word-break: break-word; }
+.report .hint { margin: 0; }
 .log { margin-top: 10px; font: 11.5px/1.5 Consolas, monospace; color: var(--sub); background: var(--muted-bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; height: 120px; overflow: auto; white-space: pre-wrap; }
 .log:empty { display: none; }
 

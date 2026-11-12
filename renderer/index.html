@@ -25,7 +25,7 @@
   <main>
     <section class="card side">
       <h2>Design gốc</h2>
-      <p class="hint">Thả design, chọn sản phẩm rồi bấm Redesign: app tạo 5 hướng redesign mới (đổi bố cục và style, giữ art và text). Mỗi hướng là 1 mockup 1:1 có background.</p>
+      <p class="hint">Thả design, chọn sản phẩm rồi bấm <b>Redesign</b> (5 hướng redesign mới: đổi bố cục và style, giữ art và text) hoặc <b>Phân tích &amp; Scale</b> (research Google Shopping, Etsy, Amazon, eBay, Walmart, Redbubble, Reddit, Instagram, Facebook… rồi ra 4 mẫu scale kèm báo cáo). Mỗi mẫu là 1 mockup 1:1 có background.</p>
 
       <label class="drop" id="drop">
         <input type="file" id="inFile" accept="image/png,image/jpeg,image/webp" hidden>
@@ -51,7 +51,7 @@
       <div class="field" id="fieldColor">
         <label for="selColor">Màu áo Comfort Colors</label>
         <div class="colorrow"><i class="sw" id="sw"></i><select id="selColor"></select></div>
-        <p class="hint">"AI tự chọn" = mỗi hướng một màu hợp style. Chọn 1 màu = cả 5 mẫu dùng chung màu đó.</p>
+        <p class="hint">"AI tự chọn" = mỗi mẫu một màu hợp style. Chọn 1 màu = mọi mẫu dùng chung màu đó.</p>
       </div>
 
       <div class="field">
@@ -61,9 +61,10 @@
 
       <div class="actions">
         <button class="btn pri" id="btnStart" disabled>Redesign</button>
+        <button class="btn pri alt" id="btnScale" disabled title="Research các sàn TMĐT + mạng xã hội, ra 4 mẫu scale kèm báo cáo">🔎 Phân tích &amp; Scale</button>
       </div>
       <p class="err" id="err"></p>
-      <p class="hint" id="queueHint">Mỗi job chạy trong 1 cửa sổ Chrome riêng, nhiều job chạy song song (đặt số job ở ⚙ Cài đặt). Mỗi job khoảng 5–20 phút, ảnh tự lưu vào thư mục job.</p>
+      <p class="hint" id="queueHint">Mỗi job chạy trong 1 cửa sổ Chrome riêng, nhiều job chạy song song (đặt số job ở ⚙ Cài đặt). Redesign khoảng 5–20 phút, Phân tích &amp; Scale khoảng 10–30 phút, ảnh tự lưu vào thư mục job.</p>
     </section>
 
     <section class="card results" id="queueCard">
@@ -89,6 +90,7 @@
             <div id="anBody"></div>
           </div>
         </div>
+        <div class="card report" id="report" hidden></div>
         <div class="grid" id="grid"></div>
       </div>
     </div>

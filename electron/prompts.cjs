@@ -2,6 +2,7 @@
 // chatgpt-skill/comfort-redesign/SKILL.md) + bảng màu Comfort Colors 1717.
 
 const NUM_OPTIONS = 5;
+const SCALE_OPTIONS = 4; // chế độ Phân tích & Scale: research thị trường + 4 mẫu scale
 
 // Màu Comfort Colors 1717 (hex xấp xỉ, chỉ để hiện ô màu trên app).
 const COLORS = [
@@ -59,6 +60,38 @@ function skillMessage({ product, model, color, note }) {
   ].filter(Boolean).join(' ');
 }
 
+/** Tin nhắn chế độ Scale (skill tự research các sàn + tạo 4 mockup + báo cáo). */
+function scaleMessage({ product, model, color, note }) {
+  const p = findProduct(product);
+  return [
+    `Scale the attached design: research the market and create ${SCALE_OPTIONS} scale designs.`,
+    `Product: ${p.name}.`,
+    p.wear ? `Model: ${model || 'woman'}.` : '',
+    p.cc ? `Shirt color: ${color || 'choose per option'}.` : '',
+    note ? `Note: ${note}` : '',
+  ].filter(Boolean).join(' ');
+}
+
+/**
+ * Báo cáo research (markdown) của chế độ Scale: khối code bắt đầu "# SCALE REPORT".
+ * Không thấy khối code -> lấy phần chữ từ "SCALE REPORT" cuối cùng tới trước các dòng kết quả.
+ */
+function parseReport(reply, blocks) {
+  const b = (blocks || []).filter((x) => /^\s*#\s*SCALE REPORT/i.test(x)).pop();
+  let md = b;
+  if (!md) {
+    const t = String(reply || ''), k = t.lastIndexOf('SCALE REPORT');
+    if (k < 0) return '';
+    // Work hiện khối code không phải <pre> -> báo cáo nằm trong chữ trang. Cắt tới dòng kết quả đầu tiên
+    // "Tên — Màu — Tóm tắt" (2 dấu gạch dài, không in đậm, không link); sau đó là chữ giao diện ChatGPT.
+    const isLine = (l) => (l.match(/\s[—–]\s/g) || []).length >= 2 && !/\*\*|https?:/.test(l);
+    const lines = t.slice(k).split('\n');
+    const end = lines.findIndex(isLine);
+    md = (end < 0 ? lines : lines.slice(0, end)).join('\n');
+  }
+  return md.replace(/^\s*#?\s*SCALE REPORT\s*\n?/i, '').trim();
+}
+
 function regenMessage(n, note) {
   return `Regenerate #${n}${note ? `. Note: ${note.replace(/\s+[—–]\s+/g, ', ').replace(/\s+/g, ' ').trim()}` : ''}`;
 }
@@ -80,4 +113,4 @@ function parseLines(text) {
   return out;
 }
 
-module.exports = { NUM_OPTIONS, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };
+module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleMessage, parseReport, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };

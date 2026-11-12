@@ -89,18 +89,22 @@ async function initColors() {
 // ------------------------------- Chạy job -----------------------------------
 function refreshButtons() {
   $('btnStart').disabled = !design;
+  $('btnScale').disabled = !design;
   setChip();
 }
 
-$('btnStart').onclick = async () => {
+// mode: 'redesign' = 5 hướng redesign · 'scale' = research các sàn + 4 mẫu scale + báo cáo.
+async function startJob(mode) {
   $('err').textContent = '';
   try {
     const p = product();
-    await window.api.start({ ...design, product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
+    await window.api.start({ ...design, mode, product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
     resetForm(); // như Design Template: tạo job xong thì form trống để tạo job mới hoàn toàn
     render();
   } catch (e) { $('err').textContent = e.message || String(e); }
-};
+}
+$('btnStart').onclick = () => startJob('redesign');
+$('btnScale').onclick = () => startJob('scale');
 $('btnCollect').onclick = () => job && window.api.collect(job.id);
 $('btnOpenDir').onclick = () => job && window.api.openDir(job.id);
 
@@ -135,6 +139,7 @@ function renderAnalysis(j) {
   const modelLabel = { woman: 'Nữ', man: 'Nam', couple: 'Cặp đôi', auto: 'AI chọn' }[j.model] || '';
   const p = products.find((x) => x.name === j.product);
   $('anBody').innerHTML = `
+    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale (research thị trường + 4 mẫu scale)' : 'Redesign 5 hướng'}</p>
     <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''}</p>
     ${p?.cc ? `<p class="an-row"><b>Màu áo:</b>${esc(j.color || 'AI tự chọn theo từng hướng')}</p>` : ''}
     ${j.note ? `<p class="an-row"><b>Ghi chú:</b>${esc(j.note)}</p>` : ''}
@@ -142,6 +147,44 @@ function renderAnalysis(j) {
     ${['error', 'cancelled'].includes(j.stage) ? `<p class="err">${esc(j.error)}</p>` : ''}`;
   // Lỗi / thiếu mẫu mà đã có hội thoại -> lấy lại kết quả (ChatGPT có thể vẫn đang làm tiếp).
   $('btnCollect').hidden = !(j.convUrl && !j.running && j.options.some((o) => o.status !== 'done'));
+  renderReport(j);
+}
+
+// ------------------------------- Báo cáo research (job Scale) ----------------
+/** Markdown gọn (tiêu đề, gạch đầu dòng, đánh số, in đậm, link) -> HTML an toàn. */
+function mdToHtml(md) {
+  const inline = (s) => esc(s)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, t, u) => `<a href="${u}" target="_blank">${t}</a>`)
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  let html = '', list = '';
+  const close = () => { if (list) { html += `</${list}>`; list = ''; } };
+  for (const raw of String(md || '').split('\n')) {
+    const l = raw.trim();
+    let m;
+    if (!l) { close(); continue; }
+    if ((m = l.match(/^(#{1,6})\s+(.*)$/))) { close(); html += m[1].length <= 2 ? `<h4>${inline(m[2])}</h4>` : `<h5>${inline(m[2])}</h5>`; continue; }
+    const ul = l.match(/^[-*•]\s+(.*)$/), ol = l.match(/^\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      const want = ul ? 'ul' : 'ol';
+      if (list !== want) { close(); html += `<${want}>`; list = want; }
+      html += `<li>${inline((ul || ol)[1])}</li>`;
+      continue;
+    }
+    close(); html += `<p>${inline(l)}</p>`;
+  }
+  close();
+  return html;
+}
+
+function renderReport(j) {
+  const box = $('report');
+  box.hidden = j.mode !== 'scale';
+  if (box.hidden) return;
+  const html = j.report
+    ? `<h4>📊 Báo cáo research thị trường</h4>${mdToHtml(j.report)}<p class="hint">Đã lưu: report.md trong thư mục job.</p>`
+    : `<p class="hint">${j.running || j.stage === 'queued' ? '📊 Báo cáo research thị trường sẽ hiện ở đây khi job xong.' : '📊 Chưa có báo cáo research.'}</p>`;
+  if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
 }
 
 // Mô tả tạo lại đang gõ, theo job + mẫu (giữ nguyên khi trang tự làm mới).
@@ -162,7 +205,7 @@ function renderOption(o, i) {
     <div class="shot ${o.status === 'run' || regenning ? 'run' : ''} ${regenning && o.url ? 'dim' : ''}">${shot}</div>
     <div class="meta"><i class="sw" style="${swatch(o.shirt_color)}"></i>${esc(o.shirt_color || '—')}${o.summary ? ` · ${esc(o.summary)}` : ''}</div>
     ${o.error ? `<div class="oerr">${esc(o.error)}</div>` : ''}
-    <textarea class="regen-note" data-note="${i}" rows="2" placeholder="Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi áo màu Sage, chữ to hơn, nền ngoài trời…" ${canRegen ? '' : 'disabled'}></textarea>
+    <textarea class="regen-note" data-note="${i}" rows="2" placeholder="${job.mode === 'scale' ? 'Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi câu chữ cho nghề y tá, áo màu Sage…' : 'Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi áo màu Sage, chữ to hơn, nền ngoài trời…'}" ${canRegen ? '' : 'disabled'}></textarea>
     <div class="row">
       <button class="btn sm pri" data-regen="${i}" ${canRegen ? '' : 'disabled'}>↻ Tạo lại</button>
       <button class="btn sm" data-file="${i}" ${o.file ? '' : 'disabled'}>Hiện file</button>
@@ -214,16 +257,17 @@ function statusChip(j) {
   if (j.stage === 'queued') return ['Chờ chạy', 'chip'];
   if (j.running) return ['Đang chạy', 'chip run'];
   if (j.stage === 'cancelled') return ['Đã huỷ', 'chip bad'];
-  if (j.stage === 'error') return [done ? `Lỗi · ${done}/5 mẫu` : 'Lỗi', 'chip bad'];
-  return [done < j.options.length ? `Xong ${done}/5 mẫu` : 'Hoàn tất', done < j.options.length ? 'chip warn' : 'chip ok'];
+  if (j.stage === 'error') return [done ? `Lỗi · ${done}/${j.options.length} mẫu` : 'Lỗi', 'chip bad'];
+  return [done < j.options.length ? `Xong ${done}/${j.options.length} mẫu` : 'Hoàn tất', done < j.options.length ? 'chip warn' : 'chip ok'];
 }
 
 function progressHtml(j) {
   const cur = j.stage === 'done' ? STEPS.length : j.running ? (STEP_IDX[j.step] ?? 0) : j.stage === 'queued' ? -1 : (STEP_IDX[j.step] ?? 1);
   let pct = 0;
   if (j.running && j.stepAt) {
-    pct = Math.min(95, Math.max(4, ((Date.now() - Date.parse(j.stepAt)) / 1000 / (EXPECT[j.step] || 60)) * 100));
-    if (j.step === 'work' && j.imgCount) pct = Math.max(pct, Math.min(95, (j.imgCount / 5) * 100));
+    const exp = j.mode === 'scale' && j.step === 'work' ? 900 : (EXPECT[j.step] || 60); // Scale research lâu hơn
+    pct = Math.min(95, Math.max(4, ((Date.now() - Date.parse(j.stepAt)) / 1000 / exp) * 100));
+    if (j.step === 'work' && j.imgCount) pct = Math.max(pct, Math.min(95, (j.imgCount / j.options.length) * 100));
   }
   const segs = STEPS.map((_, i) => {
     if (i < cur) return '<i><b style="width:100%"></b></i>';
@@ -235,7 +279,7 @@ function progressHtml(j) {
   if (j.stage === 'queued') text = 'Chờ tới lượt';
   else if (j.running) {
     text = STEP_TEXT[j.step] || 'Đang chạy';
-    if (j.step === 'work' && j.imgCount) text += ` · ${j.imgCount}/5 ảnh`;
+    if (j.step === 'work' && j.imgCount) text += ` · ${j.imgCount}/${j.options.length} ảnh`;
     start = j.stepAt || '';
   } else if (j.stage === 'error' || j.stage === 'cancelled') text = j.error || 'Lỗi';
   else text = `Hoàn tất · ${j.options.filter((o) => o.status === 'done').length} mẫu`;
@@ -253,7 +297,7 @@ function rowHtml(j) {
   else if (!busy) acts.push(`<button class="btn sm" data-act="remove" data-id="${j.id}" title="Ẩn khỏi danh sách (file vẫn giữ)">Xoá khỏi danh sách</button>`);
   return `<div class="qrow">
     <div class="prod" data-act="detail" data-id="${j.id}"><img src="${esc(j.designUrl)}" alt="">
-      <div style="min-width:0"><div class="s">${esc(j.code || '')}</div><div class="t" title="${esc(j.name)}">${esc(j.name)}</div><div class="s">${esc(sub)}</div></div></div>
+      <div style="min-width:0"><div class="s">${esc(j.code || '')}${j.mode === 'scale' ? ' <span class="tag scale">Scale</span>' : ''}</div><div class="t" title="${esc(j.name)}">${esc(j.name)}</div><div class="s">${esc(sub)}</div></div></div>
     <div><span class="${cls}">${esc(label)}</span>${progressHtml(j)}</div>
     <div class="acts">${acts.join('')}</div>
   </div>`;
@@ -266,7 +310,7 @@ function renderQueue() {
   const running = all.filter((j) => j.running).length, waiting = all.filter((j) => j.stage === 'queued').length;
   $('qSummary').textContent = `${all.length} job · ${running} đang chạy · ${waiting} chờ`;
   const list = all.filter((j) => qTab === 'all' || jobState(j) === qTab);
-  $('qList').innerHTML = list.length ? list.map(rowHtml).join('') : `<div class="qempty">${all.length ? 'Chưa có job nào ở mục này.' : 'Chưa có job. Thả design bên trái rồi bấm <b>Redesign</b>.'}</div>`;
+  $('qList').innerHTML = list.length ? list.map(rowHtml).join('') : `<div class="qempty">${all.length ? 'Chưa có job nào ở mục này.' : 'Chưa có job. Thả design bên trái rồi bấm <b>Redesign</b> hoặc <b>Phân tích &amp; Scale</b>.'}</div>`;
 }
 
 function renderDetail() {

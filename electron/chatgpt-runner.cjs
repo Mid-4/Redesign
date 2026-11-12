@@ -51,7 +51,7 @@ const SEL = {
 };
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
-const TASK_TIMEOUT_MS = 30 * 60 * 1000; // 1 việc Work (phân tích + 5 ảnh) có thể lâu
+const TASK_TIMEOUT_MS = 45 * 60 * 1000; // 1 việc Work (phân tích/research + 4–5 ảnh) có thể lâu
 const SLOW_MO_MS = 120;
 const LOGIN_GRACE_MS = 8000; // đã đăng nhập rồi vẫn chờ chừng này để user kịp ĐỔI TÀI KHOẢN
 const CLOSE_IDLE_MS = 6000;  // xong hết, hàng đợi rảnh -> tự đóng cửa sổ sau chừng này
@@ -306,6 +306,16 @@ async function pageText() {
   }).catch(() => '');
 }
 
+/** Nội dung các khối code trong hội thoại đang hiện (markdown gốc, giữ nguyên link). */
+async function codeBlocks() {
+  return pg().evaluate(() => {
+    const mains = [...document.querySelectorAll('main')].filter((m) => m.offsetParent !== null);
+    mains.sort((a, b) => b.innerText.length - a.innerText.length);
+    return [...(mains[0] || document.body).querySelectorAll('pre')].map((p) => (p.querySelector('code') || p).textContent || '');
+  }).catch(() => []);
+}
+const result = async (files) => ({ url: pg().url(), files, reply: await pageText(), blocks: await codeBlocks() });
+
 /** ChatGPT đang làm? Work hiện "Working for 1m 33s" (xong thì "Worked for …"); chat thường có nút Stop. */
 async function isBusy() {
   if (/\bWorking for\b|\bCreating image\b/i.test(await pageText())) return true;
@@ -490,7 +500,7 @@ async function workTaskOnce({ url, skill, message, images, expect = 1, downloadD
     const n = await waitForImages(0, expect, log, onImages);
     if (n <= 0) throw new Error('Hội thoại chưa có ảnh nào.');
     onStep('download');
-    return { url: pg().url(), files: await downloadGenerated(0, downloadDir, log), reply: await pageText() };
+    return result(await downloadGenerated(0, downloadDir, log));
   }
 
   const before = (await listGenerated()).length;
@@ -508,7 +518,7 @@ async function workTaskOnce({ url, skill, message, images, expect = 1, downloadD
       for (let i = 0; i < 15 && !/\/c\//.test(pg().url()); i++) await pg().waitForTimeout(1000);
     });
     if (onUrl && /\/c\//.test(pg().url())) onUrl(pg().url());
-    log(`ChatGPT Work đang làm (chờ ${expect} ảnh, có thể mất 5–20 phút)…`);
+    log(`ChatGPT Work đang làm (chờ ${expect} ảnh, có thể mất 5–30 phút)…`);
     onStep('work');
 
     let n = await waitForImages(before, expect, log, onImages);
@@ -523,7 +533,7 @@ async function workTaskOnce({ url, skill, message, images, expect = 1, downloadD
     if (n <= 0) throw new Error('ChatGPT không tạo ảnh. Cuối trang: ' + (await pageText()).slice(-300).replace(/\s+/g, ' '));
     onStep('download');
     const files = await downloadGenerated(before, downloadDir, log);
-    return { url: pg().url(), files, reply: await pageText() };
+    return result(files);
   } catch (e) {
     await debugShot(downloadDir, e, log);
     throw e;
