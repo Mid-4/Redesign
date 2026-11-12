@@ -144,7 +144,7 @@ function stageText(j) {
   if (j.stage === 'queued') return 'Đang xếp hàng — sẽ chạy khi có job xong.';
   if (j.stage === 'error' || j.stage === 'cancelled') return 'Lỗi: ' + (j.error || '');
   const done = j.options.filter((o) => o.status === 'done').length;
-  if (j.running) return (STEP_TEXT[j.step] || 'Đang chạy') + '…';
+  if (j.running) return ((j.step === 'analyze' && j.mode !== 'scale' ? 'Đang phân tích design' : STEP_TEXT[j.step]) || 'Đang chạy') + '…';
   return `Hoàn tất ${done}/${j.options.length} mẫu.`;
 }
 
@@ -153,7 +153,7 @@ function renderAnalysis(j) {
   const modelLabel = { woman: 'Nữ', man: 'Nam', couple: 'Cặp đôi', auto: 'AI chọn' }[j.model] || '';
   const p = products.find((x) => x.name === j.product);
   $('anBody').innerHTML = `
-    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale (Claude research → chọn hướng → tạo mockup)' : 'Redesign 5 hướng'}</p>
+    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale' : 'Redesign 5 hướng'}</p>
     <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''}</p>
     ${p?.cc ? `<p class="an-row"><b>Màu áo:</b>${esc(j.color || 'AI tự chọn theo từng hướng')}</p>` : ''}
     ${j.note ? `<p class="an-row"><b>Ghi chú:</b>${esc(j.note)}</p>` : ''}
@@ -198,10 +198,10 @@ function renderReport(j) {
   // Job Redesign cũ (trước khi có bước Claude) không có phân tích -> ẩn khung.
   box.hidden = !(j.report || waiting || scale);
   if (box.hidden) return;
-  const title = scale ? '📊 Báo cáo research thị trường' : '🔍 Phân tích design (Claude)';
+  const title = scale ? '📊 Báo cáo research thị trường' : '🔍 Phân tích design';
   const html = j.report
     ? `<h4>${title}</h4>${mdToHtml(j.report)}`
-    : `<p class="hint">${waiting ? (scale ? '📊 Claude đang phân tích & research — báo cáo + 5 hướng scale sẽ hiện ở đây khi xong.' : '🔍 Claude đang phân tích design — kết quả + 5 hướng redesign sẽ hiện ở đây khi xong.') : '📊 Chưa có báo cáo.'}</p>`;
+    : `<p class="hint">${waiting ? (scale ? '📊 Đang phân tích & research — báo cáo + 5 hướng scale sẽ hiện ở đây khi xong.' : '🔍 Đang phân tích design — kết quả + 5 hướng redesign sẽ hiện ở đây khi xong.') : '📊 Chưa có báo cáo.'}</p>`;
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
 }
 
@@ -306,7 +306,7 @@ function progressHtml(j) {
   if (j.stage === 'review') text = 'Phân tích xong · chọn hướng để tạo ảnh';
   else if (j.stage === 'queued') text = 'Chờ tới lượt';
   else if (j.running) {
-    text = STEP_TEXT[j.step] || 'Đang chạy';
+    text = (j.step === 'analyze' && j.mode !== 'scale' ? 'Đang phân tích design' : STEP_TEXT[j.step]) || 'Đang chạy';
     if (j.step === 'work' && j.imgCount) text += ` · ${j.imgCount}/${j.options.length} ảnh`;
     start = j.stepAt || '';
   } else if (j.stage === 'error' || j.stage === 'cancelled') text = j.error || 'Lỗi';
@@ -541,7 +541,7 @@ function renderAccount(a) {
     <div class="acct-stats">
       <div><b>${st.imagesToday ?? 0}</b>ảnh hôm nay · ${st.images7 ?? 0} / 7 ngày</div>
       <div><b>${st.jobsToday ?? 0}</b>job hôm nay · ${st.jobs7 ?? 0} / 7 ngày</div>
-      <div><b>${st.analysesToday ?? 0}</b>lượt Claude phân tích hôm nay · ${st.analyses7 ?? 0} / 7 ngày</div>
+      <div><b>${st.analysesToday ?? 0}</b>lượt phân tích hôm nay · ${st.analyses7 ?? 0} / 7 ngày</div>
     </div>
     <div class="row-btns"><button class="btn sm" id="btnAcctSwitch">Đổi tài khoản ChatGPT / Claude…</button></div>`;
   $('btnAcctRefresh').disabled = acctBusy;

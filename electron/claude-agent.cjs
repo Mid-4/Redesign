@@ -115,7 +115,9 @@ const procs = new Map(); // key -> child process (để huỷ)
  */
 function analyze({ key, designFile, prompt, workDir, tools = 'Read,WebSearch,WebFetch', timeoutMs = 25 * 60 * 1000 }, log = () => {}) {
   const exe = findClaude();
-  if (!exe) return Promise.reject(new Error('Máy chưa có Claude — mở Cài đặt ban đầu để cài và đăng nhập.'));
+  // Lỗi hiện cho nhân viên không nhắc tên công cụ (chi tiết ghi app.log); lỗi tài khoản gắn code CLAUDE_AUTH.
+  const authErr = (m) => Object.assign(new Error(m), { code: 'CLAUDE_AUTH' });
+  if (!exe) return Promise.reject(authErr('Bước phân tích chưa sẵn sàng — mở Cài đặt ban đầu để hoàn tất.'));
   fs.mkdirSync(workDir, { recursive: true });
   const img = path.join(workDir, 'design' + path.extname(designFile));
   fs.copyFileSync(designFile, img);
@@ -137,16 +139,17 @@ function analyze({ key, designFile, prompt, workDir, tools = 'Read,WebSearch,Web
       if (p.cancelled) return reject(new Error('Đã huỷ.'));
       let j;
       try { j = JSON.parse(out.trim().split('\n').filter(Boolean).pop()); } catch {}
-      if (!j) return reject(new Error(`Claude không trả kết quả (mã ${code}). ${errOut.slice(-300)}`));
+      if (!j) { log(`Claude không trả kết quả (mã ${code}). ${errOut.slice(-300)}`); return reject(new Error('Bước phân tích không trả kết quả — bấm Thử lại.')); }
       if (j.is_error) {
         const msg = String(j.result || j.subtype || '');
-        if (/log ?in|auth|credential|401|403/i.test(msg)) return reject(new Error('Claude chưa đăng nhập / hết hạn — mở Cài đặt ban đầu để đăng nhập Claude.'));
-        if (/limit|quota|usage/i.test(msg)) return reject(new Error('Tài khoản Claude đã hết lượt dùng — thử lại sau.'));
-        return reject(new Error('Claude lỗi: ' + msg.slice(0, 300)));
+        log('Claude lỗi: ' + msg.slice(0, 300));
+        if (/log ?in|auth|credential|401|403/i.test(msg)) return reject(authErr('Tài khoản phân tích chưa đăng nhập / hết hạn — mở Cài đặt ban đầu để đăng nhập lại.'));
+        if (/limit|quota|usage/i.test(msg)) return reject(new Error('Bước phân tích đã hết lượt dùng — thử lại sau.'));
+        return reject(new Error('Bước phân tích lỗi — bấm Thử lại.'));
       }
       let data = j.structured_output;
       if (!data) { try { data = JSON.parse(String(j.result).replace(/^```(json)?|```$/g, '').trim()); } catch {} }
-      if (!data?.designs?.length) return reject(new Error('Claude trả kết quả sai định dạng.'));
+      if (!data?.designs?.length) return reject(new Error('Bước phân tích trả kết quả sai định dạng — bấm Thử lại.'));
       log(`Claude phân tích xong (${Math.round((j.duration_ms || 0) / 1000)}s, ${j.usage?.server_tool_use?.web_search_requests || 0} lượt tìm web).`);
       resolve({ report: String(data.report_md || '').trim(), designs: data.designs.slice(0, 5) });
     });

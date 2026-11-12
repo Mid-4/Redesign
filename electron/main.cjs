@@ -310,7 +310,7 @@ async function runAll(job, collect = false) {
   } catch (e) {
     if (job.cancelled) { job.stage = 'cancelled'; job.error = 'Đã huỷ.'; jlog(job)('Đã huỷ job.'); }
     else { job.stage = 'error'; job.error = e.message || String(e); jlog(job)('❌ ' + job.error); }
-    if (/Claude chưa đăng nhập|máy chưa có Claude/i.test(job.error || '')) { setSettings({ claudeOk: false }); setupChanged(); }
+    if (e.code === 'CLAUDE_AUTH') { setSettings({ claudeOk: false }); setupChanged(); }
     else if (/chưa đăng nhập|hết hạn/i.test(job.error || '')) { setSettings({ loginOk: false }); setupChanged(); }
     job.options.forEach((o) => { if (o.status === 'run') { o.status = 'error'; o.error = job.cancelled ? 'Đã huỷ.' : 'Không có kết quả.'; } });
   } finally {
