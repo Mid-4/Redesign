@@ -1,0 +1,63 @@
+{
+  "name": "comfort-redesign",
+  "private": true,
+  "version": "1.0.1",
+  "description": "Comfort Redesign - redesign 5 hướng + mockup cho 28 sản phẩm POD qua skill trong ChatGPT Work (tài khoản ChatGPT, không API), chạy nhiều job song song",
+  "author": "Kozmoz Studio",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node scripts/check.cjs",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:portable": "electron-builder --win portable --publish never",
+    "release": "node scripts/release.cjs"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11",
+    "playwright-core": "^1.61.1"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.kozmozstudio.comfortredesign",
+    "productName": "Comfort Redesign",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/playwright-core/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "portable": {
+      "artifactName": "Comfort-Redesign-${version}-portable.exe"
+    },
+    "extraResources": [
+      {
+        "from": "chatgpt-skill/comfort-redesign.zip",
+        "to": "comfort-redesign.zip"
+      }
+    ],
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Comfort-Redesign-Setup-${version}.exe",
+      "shortcutName": "Comfort Redesign"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Mid-4",
+      "repo": "comfort-redesign-releases",
+      "releaseType": "release"
+    }
+  }
+}
