@@ -27,8 +27,8 @@ npm run dist:win   # release/Comfort-Redesign-Setup-x.y.z.exe (bộ cài, không
 Dữ liệu app: `%APPDATA%\comfort-redesign` (đăng nhập ChatGPT, cài đặt, jobs/*.json, app.log).
 
 ## Phát hành bản mới (tự cập nhật cho nhân viên)
-- Code: `Mid-4/comfort-redesign` (private) · Bộ cài + cập nhật: `Mid-4/comfort-redesign-releases` (public).
-- Token GitHub fine-grained, quyền **Contents: Read and write** trên 2 repo trên → dán vào file `.gh-token` (đã gitignore).
+- 1 repo **public** chứa cả code lẫn bộ cài + cập nhật: https://github.com/Mid-4/Redesign
+- Token GitHub fine-grained, quyền **Contents: Read and write** trên repo đó → dán vào file `.gh-token` (đã gitignore).
 - Commit hết thay đổi rồi chạy `npm run release` (patch) / `npm run release -- minor`. Lỗi lúc build/đăng: `npm run release -- retry`.
 - Máy nhân viên đã cài bản Setup: mở app tự tải bản mới → nút "⟳ Khởi động lại & cập nhật" (hoặc tắt app là tự cài).
 - Lần đầu gửi nhân viên: file `release/Comfort-Redesign-Setup-x.y.z.exe` (bản portable cũ không tự cập nhật được).

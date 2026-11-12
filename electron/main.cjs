@@ -568,7 +568,7 @@ function setupAutoUpdate() {
   if (!app.isPackaged) return;
   const { autoUpdater } = require('electron-updater');
   const portable = !!process.env.PORTABLE_EXECUTABLE_FILE;
-  let owner = 'Mid-4', repo = 'comfort-redesign-releases';
+  let owner = 'Mid-4', repo = 'Redesign';
   try {
     const y = fs.readFileSync(path.join(process.resourcesPath, 'app-update.yml'), 'utf8');
     owner = /^owner:\s*(\S+)/m.exec(y)?.[1] || owner;

@@ -56,7 +56,7 @@
     "publish": {
       "provider": "github",
       "owner": "Mid-4",
-      "repo": "comfort-redesign-releases",
+      "repo": "Redesign",
       "releaseType": "release"
     }
   }

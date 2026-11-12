@@ -6,9 +6,8 @@
 //   npm run release -- major   1.2.0 -> 2.0.0
 //   npm run release -- retry   giữ version, chỉ build + đăng lại (lần trước lỗi lúc build/đăng)
 //
-// Cần GitHub token (fine-grained) quyền "Contents: Read and write" trên 2 repo:
-//   - code:    git remote origin (Mid-4/comfort-redesign, private)
-//   - bản cài: package.json → build.publish (Mid-4/comfort-redesign-releases, public)
+// 1 repo PUBLIC chứa cả code lẫn bản cài: Mid-4/Redesign (git remote origin = package.json → build.publish).
+// Cần GitHub token (fine-grained) quyền "Contents: Read and write" trên repo đó.
 // Đặt trong biến môi trường GH_TOKEN hoặc dán vào file .gh-token ở thư mục này (đã gitignore).
 
 const { execSync } = require('node:child_process');
