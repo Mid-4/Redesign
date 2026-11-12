@@ -1,7 +1,7 @@
 {
   "name": "comfort-redesign",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Comfort Redesign - redesign 5 hướng + mockup cho 28 sản phẩm POD qua skill trong ChatGPT Work (tài khoản ChatGPT, không API), chạy nhiều job song song",
   "author": "Kozmoz Studio",
   "main": "electron/main.cjs",
