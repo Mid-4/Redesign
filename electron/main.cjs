@@ -232,11 +232,10 @@ function assignResults(job, r) {
 const hooks = (job) => ({ key: job.id, onStep: (st) => setStep(job, st), onImages: (n) => { job.imgCount = n; update(); } });
 
 /** Chạy việc chính (gửi skill) hoặc collect = chỉ lấy kết quả từ hội thoại đã có. */
-/** Báo cáo research của job Scale: hiện ở trang chi tiết + lưu report.md trong thư mục job. */
+/** Báo cáo của Claude: chỉ lưu trong dữ liệu job (jobs/*.json) và hiện ở trang chi tiết — thư mục job chỉ chứa ảnh. */
 function saveReport(job, md) {
   if (!md) return;
   job.report = md;
-  try { fs.writeFileSync(path.join(job.dir, 'report.md'), `# Báo cáo research — ${job.name}\n\n${md}\n`); } catch {}
 }
 
 /** Tên + màu + mô tả tiếng Việt của mẫu Scale lấy theo brief của Claude (giữ màu ChatGPT báo nếu có). */

@@ -200,7 +200,7 @@ function renderReport(j) {
   if (box.hidden) return;
   const title = scale ? '📊 Báo cáo research thị trường' : '🔍 Phân tích design (Claude)';
   const html = j.report
-    ? `<h4>${title}</h4>${mdToHtml(j.report)}<p class="hint">Đã lưu: report.md trong thư mục job.</p>`
+    ? `<h4>${title}</h4>${mdToHtml(j.report)}`
     : `<p class="hint">${waiting ? (scale ? '📊 Claude đang phân tích & research — báo cáo + 5 hướng scale sẽ hiện ở đây khi xong.' : '🔍 Claude đang phân tích design — kết quả + 5 hướng redesign sẽ hiện ở đây khi xong.') : '📊 Chưa có báo cáo.'}</p>`;
   if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
 }
