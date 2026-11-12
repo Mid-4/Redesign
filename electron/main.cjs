@@ -145,10 +145,17 @@ function saveSquare(srcPath, outPath, log) {
 }
 
 /** Lưu ảnh tải về thành option-N-<tên>.png (không ghi đè bản cũ), ép 1:1. */
+// Tên file: có mã design -> "<mã>-<số thứ tự>.png" (tạo lại: "<mã>-<số>_v2.png", file cũ giữ nguyên);
+// job cũ chưa có mã -> như trước "option-N-<tên hướng>.png".
+const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, '-').replace(/\s+/g, ' ').replace(/^[ .-]+|[ .-]+$/g, '').slice(0, 60);
 function saveOption(job, i, src) {
   const o = job.options[i];
+  const code = safeName(job.designCode);
   let n = 1, out;
-  do { out = path.join(job.dir, `option-${i + 1}-${slug(o.name)}${n > 1 ? `-${n}` : ''}.png`); n++; } while (fs.existsSync(out));
+  do {
+    out = path.join(job.dir, code ? `${code}-${i + 1}${n > 1 ? `_v${n}` : ''}.png` : `option-${i + 1}-${slug(o.name)}${n > 1 ? `-${n}` : ''}.png`);
+    n++;
+  } while (fs.existsSync(out));
   saveSquare(src, out, jlog(job));
   try { fs.unlinkSync(src); } catch {}
   o.file = out; o.t = Date.now(); o.status = 'done'; o.error = null;
@@ -433,10 +440,11 @@ ipcMain.handle('setup:getChrome', () => shell.openExternal('https://www.google.c
 ipcMain.handle('chatgpt:watch', (_e, on) => runner.setWatch(on, log));
 
 // mode: 'redesign' (5 hướng redesign) | 'scale' (research các sàn + 4 mẫu scale + báo cáo).
-ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note, mode }) => {
+ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note, mode, designCode }) => {
   const prod = P.findProduct(product);
   const scale = mode === 'scale';
-  const base = `${stamp()}-${scale ? 'scale-' : ''}${slug(prod.name)}-${slug(path.parse(fileName || 'design').name)}`;
+  const code = safeName(designCode);
+  const base = `${stamp()}-${scale ? 'scale-' : ''}${code ? code : `${slug(prod.name)}-${slug(path.parse(fileName || 'design').name)}`}`;
   let name = base;
   for (let k = 2; fs.existsSync(path.join(getSettings().outDir, name)); k++) name = `${base}-${k}`;
   const dir = path.join(getSettings().outDir, name);
@@ -447,7 +455,7 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
   fs.writeFileSync(designFile, Buffer.from(base64, 'base64'));
   const job = {
     id: ++seq, name, dir, designFile, design: { base64, mimeType },
-    mode: scale ? 'scale' : 'redesign', report: '',
+    mode: scale ? 'scale' : 'redesign', report: '', designCode: code,
     product: prod.name, model: prod.wear ? (model || 'woman') : '', color: prod.cc ? (color || '') : '', note: note || '',
     code: jobCode(scale ? 'SC' : 'CR'), createdAt: new Date().toISOString(), step: 'queue', stepAt: new Date().toISOString(),
     stage: 'queued', running: false, error: null, convUrl: null, options: [],

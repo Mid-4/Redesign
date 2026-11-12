@@ -32,6 +32,7 @@ function resetForm() {
   $('selModel').value = 'woman';
   $('selColor').value = '';
   $('note').value = '';
+  $('designCode').value = '';
   syncProduct(); paintColor();
 }
 
@@ -41,6 +42,9 @@ function loadFile(file) {
   fr.onload = () => {
     const url = String(fr.result);
     design = { base64: url.split(',')[1], mimeType: file.type, fileName: file.name || 'design.png' };
+    // Chưa nhập mã -> gợi ý theo tên file (ảnh dán từ clipboard tên chung chung thì bỏ qua), sửa lại được.
+    const stem = (file.name || '').replace(/\.[^.]+$/, '');
+    if (!$('designCode').value.trim() && stem && !/^(image|design|paste|clipboard|untitled)\b/i.test(stem)) $('designCode').value = stem.slice(0, 60);
     $('preview').src = url; $('preview').hidden = false; $('dropText').hidden = true;
     $('err').textContent = '';
     refreshButtons();
@@ -98,7 +102,7 @@ async function startJob(mode) {
   $('err').textContent = '';
   try {
     const p = product();
-    await window.api.start({ ...design, mode, product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
+    await window.api.start({ ...design, mode, designCode: $('designCode').value.trim(), product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
     resetForm(); // như Design Template: tạo job xong thì form trống để tạo job mới hoàn toàn
     render();
   } catch (e) { $('err').textContent = e.message || String(e); }
@@ -323,7 +327,7 @@ function rowHtml(j) {
   else if (!busy) acts.push(`<button class="btn sm" data-act="remove" data-id="${j.id}" title="Ẩn khỏi danh sách (file vẫn giữ)">Xoá khỏi danh sách</button>`);
   return `<div class="qrow">
     <div class="prod" data-act="detail" data-id="${j.id}"><img src="${esc(j.designUrl)}" alt="">
-      <div style="min-width:0"><div class="s">${esc(j.code || '')}${j.mode === 'scale' ? ' <span class="tag scale">Scale</span>' : ''}</div><div class="t" title="${esc(j.name)}">${esc(j.name)}</div><div class="s">${esc(sub)}</div></div></div>
+      <div style="min-width:0"><div class="s">${esc(j.code || '')}${j.mode === 'scale' ? ' <span class="tag scale">Scale</span>' : ''}</div><div class="t" title="${esc(j.name)}">${esc(j.designCode || j.name)}</div><div class="s">${esc(sub)}</div></div></div>
     <div><span class="${cls}">${esc(label)}</span>${progressHtml(j)}</div>
     <div class="acts">${acts.join('')}</div>
   </div>`;
@@ -343,7 +347,7 @@ function renderDetail() {
   if (!$('dlgJob').open) return;
   job = jobs.find((j) => j.id === selId) || null;
   if (!job) { $('dlgJob').close(); return; }
-  $('jobName').textContent = `${job.code || ''} · ${job.name}`;
+  $('jobName').textContent = [job.designCode, job.code, job.designCode ? '' : job.name].filter(Boolean).join(' · ');
   $('jobStage').textContent = stageText(job);
   renderAnalysis(job);
   renderPicker(job);
