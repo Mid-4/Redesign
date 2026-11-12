@@ -132,6 +132,10 @@ dialog.big .dlg-body { flex: 1; overflow: auto; }
 .opt details b { color: var(--text); }
 .opt .row { display: flex; gap: 6px; }
 .opt .row .btn { flex: 1; }
+.opt .regen-note { font-size: 12.5px; min-height: 52px; }
+.shot.dim img { opacity: .45; filter: blur(1px); }
+.regen-over { position: absolute; inset: auto 0 0 0; padding: 8px; text-align: center; font-weight: 600; font-size: 13px; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+.cell { display: contents; }
 .opt .oerr { color: var(--bad); font-size: 12px; white-space: pre-wrap; max-height: 80px; overflow: auto; }
 
 dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; box-shadow: var(--shadow); background: var(--card); color: var(--text); }

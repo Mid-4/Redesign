@@ -60,7 +60,7 @@ function skillMessage({ product, model, color, note }) {
 }
 
 function regenMessage(n, note) {
-  return `Regenerate #${n}${note ? ` — ${note}` : ''}`;
+  return `Regenerate #${n}${note ? `. Note: ${note.replace(/\s+[—–]\s+/g, ', ').replace(/\s+/g, ' ').trim()}` : ''}`;
 }
 
 /**

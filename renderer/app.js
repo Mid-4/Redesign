@@ -144,23 +144,54 @@ function renderAnalysis(j) {
   $('btnCollect').hidden = !(j.convUrl && !j.running && j.options.some((o) => o.status !== 'done'));
 }
 
+// Mô tả tạo lại đang gõ, theo job + mẫu (giữ nguyên khi trang tự làm mới).
+const regenNotes = {};
+const noteKey = (i) => `${job.id}:${i}`;
+
 function renderOption(o, i) {
-  const [label, cls] = STATUS[o.status] || STATUS.wait;
+  let [label, cls] = STATUS[o.status] || STATUS.wait;
+  if (o.regen === 'run') [label, cls] = ['Đang tạo lại…', 'chip run'];
+  else if (o.regen === 'wait') [label, cls] = ['Chờ tạo lại', 'chip warn'];
+  const regenning = !!o.regen;
   const shot = o.url
-    ? `<img src="${esc(o.url)}" alt="" data-big="${esc(o.url)}">`
+    ? `<img src="${esc(o.url)}" alt="" data-big="${esc(o.url)}">${regenning ? `<div class="regen-over">${o.regen === 'run' ? 'Đang tạo lại…' : 'Chờ tạo lại…'}</div>` : ''}`
     : `<div class="msg">${o.status === 'run' ? 'Đang làm…' : o.status === 'wait' ? 'Đang xếp hàng…' : 'Chưa có ảnh'}</div>`;
-  const busy = o.status === 'run';
+  const canRegen = !regenning && o.status !== 'run' && !job.running && !!job.convUrl;
   return `<div class="card opt">
     <div class="top"><b title="${esc(o.name)}">${i + 1} · ${esc(o.name)}</b><span class="${cls}">${label}</span></div>
-    <div class="shot ${o.status === 'run' ? 'run' : ''}">${shot}</div>
+    <div class="shot ${o.status === 'run' || regenning ? 'run' : ''} ${regenning && o.url ? 'dim' : ''}">${shot}</div>
     <div class="meta"><i class="sw" style="${swatch(o.shirt_color)}"></i>${esc(o.shirt_color || '—')}${o.summary ? ` · ${esc(o.summary)}` : ''}</div>
     ${o.error ? `<div class="oerr">${esc(o.error)}</div>` : ''}
+    <textarea class="regen-note" data-note="${i}" rows="2" placeholder="Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi áo màu Sage, chữ to hơn, nền ngoài trời…" ${canRegen ? '' : 'disabled'}></textarea>
     <div class="row">
-      <button class="btn sm" data-regen="${i}" ${busy || job.running || !job.convUrl ? 'disabled' : ''}>↻ Tạo lại</button>
+      <button class="btn sm pri" data-regen="${i}" ${canRegen ? '' : 'disabled'}>↻ Tạo lại</button>
       <button class="btn sm" data-file="${i}" ${o.file ? '' : 'disabled'}>Hiện file</button>
     </div>
   </div>`;
 }
+
+/** Vẽ lại lưới mẫu nhưng chỉ thay thẻ nào thay đổi -> ô mô tả đang gõ không mất chữ / con trỏ. */
+function renderGrid() {
+  const grid = $('grid');
+  if (grid.dataset.job !== String(job.id)) { grid.innerHTML = ''; grid.dataset.job = String(job.id); }
+  job.options.forEach((o, i) => {
+    const html = renderOption(o, i);
+    let cell = grid.children[i];
+    if (!cell) { cell = document.createElement('div'); cell.className = 'cell'; grid.appendChild(cell); }
+    if (cell.dataset.html === html) return;
+    const ta = cell.querySelector('textarea');
+    const hadFocus = ta && document.activeElement === ta, sel = ta && [ta.selectionStart, ta.selectionEnd];
+    cell.innerHTML = html; cell.dataset.html = html;
+    const nt = cell.querySelector('textarea');
+    nt.value = regenNotes[noteKey(i)] || '';
+    if (hadFocus && !nt.disabled) { nt.focus(); nt.setSelectionRange(sel[0], sel[1]); }
+  });
+  while (grid.children.length > job.options.length) grid.lastChild.remove();
+}
+$('grid').addEventListener('input', (e) => {
+  const t = e.target.closest('[data-note]');
+  if (t) regenNotes[noteKey(Number(t.dataset.note))] = t.value;
+});
 
 // ------------------------------- Hàng đợi job (giống Design Template) -------
 const STEPS = ['Gửi', 'Đang làm', 'Tải ảnh'];
@@ -245,7 +276,7 @@ function renderDetail() {
   $('jobName').textContent = `${job.code || ''} · ${job.name}`;
   $('jobStage').textContent = stageText(job);
   renderAnalysis(job);
-  $('grid').innerHTML = job.options.map(renderOption).join('');
+  renderGrid();
 }
 
 function render() {
@@ -279,7 +310,7 @@ $('btnCloseJob').onclick = () => $('dlgJob').close();
 $('grid').onclick = (e) => {
   const t = e.target;
   if (t.dataset.big) { $('bigImg').src = t.dataset.big; $('dlgImg').showModal(); }
-  else if (t.dataset.regen) window.api.regen(job.id, Number(t.dataset.regen));
+  else if (t.dataset.regen) { const i = Number(t.dataset.regen); window.api.regen(job.id, i, regenNotes[noteKey(i)] || ''); }
   else if (t.dataset.file) window.api.openFile(job.options[Number(t.dataset.file)].file);
 };
 $('btnCloseImg').onclick = () => $('dlgImg').close();

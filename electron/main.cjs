@@ -47,7 +47,7 @@ const log = (msg) => {
 const jlog = (job) => (msg) => log(`[#${job.id}] ${msg}`);
 
 function snap(job) {
-  const { design, ...rest } = job;
+  const { design, regenChain, ...rest } = job;
   return {
     ...rest,
     designUrl: pathToFileURL(job.designFile).href,
@@ -100,6 +100,8 @@ function loadHistory() {
       job.options.forEach((o) => { if (o.status !== 'done') { o.status = 'error'; o.error = null; } });
     }
     job.options.forEach((o) => { if (o.file && !fs.existsSync(o.file)) { o.file = null; o.status = 'error'; } });
+    // App tắt giữa lúc tạo lại -> bỏ trạng thái tạo lại, giữ ảnh cũ.
+    job.options.forEach((o) => { if (o.regen) { o.regen = null; if (o.status === 'run') o.status = o.file ? 'done' : 'error'; } });
     jobs.push(job);
   }
   jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -163,7 +165,7 @@ const jobsStore = () => path.join(app.getPath('userData'), 'jobs');
 const jobMetaFile = (dir) => path.join(jobsStore(), `${path.basename(dir)}.json`);
 function saveJobFile(job) {
   try {
-    const { design, running, cancelled, ...meta } = job;
+    const { design, running, cancelled, regenChain, ...meta } = job;
     fs.mkdirSync(jobsStore(), { recursive: true });
     fs.writeFileSync(jobMetaFile(job.dir), JSON.stringify(meta, null, 2));
   } catch {}
@@ -324,24 +326,35 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
 });
 
 // Tạo lại 1 mẫu: gửi "Regenerate #N" vào đúng hội thoại Work của job (mở tab riêng).
-ipcMain.handle('job:regen', async (_e, id, i) => {
+// Mỗi mẫu có ô mô tả riêng (note). Các lần tạo lại trong CÙNG 1 job chạy lần lượt (cùng 1 hội thoại
+// ChatGPT — gửi song song sẽ lẫn ảnh giữa các mẫu); mẫu đang chờ hiện "Chờ tạo lại".
+ipcMain.handle('job:regen', (_e, id, i, note) => {
   const job = findJob(id);
   const o = job?.options[i];
-  if (!o || job.running || o.status === 'run' || !job.convUrl) return;
-  o.status = 'run'; o.error = null; update();
+  if (!o || job.running || o.regen || !job.convUrl) return;
+  o.regen = 'wait'; o.regenNote = String(note || '').trim(); o.error = null; update();
+  job.regenChain = (job.regenChain || Promise.resolve()).then(() => regenOne(job, i)).catch(() => {});
+});
+
+async function regenOne(job, i) {
+  const o = job.options[i];
+  o.regen = 'run'; o.status = 'run'; update();
   try {
-    const r = await runner.workTask({ ...runnerPaths(), key: `${job.id}-r${i}`, url: job.convUrl, message: P.regenMessage(i + 1), images: [], expect: 1 }, jlog(job));
+    if (o.regenNote) jlog(job)(`Tạo lại mẫu ${i + 1} với mô tả: ${o.regenNote}`);
+    const r = await runner.workTask({ ...runnerPaths(), key: `${job.id}-r${i}`, url: job.convUrl, message: P.regenMessage(i + 1, o.regenNote), images: [], expect: 1 }, jlog(job));
     applyInfo(o, P.parseLines(r.reply).slice(-1)[0]);
     if (!r.files.length) throw new Error('ChatGPT không tạo lại được.');
     r.files.slice(0, -1).forEach((f) => { try { fs.unlinkSync(f); } catch {} });
     saveOption(job, i, r.files[r.files.length - 1]);
   } catch (e) {
-    o.status = 'error'; o.error = e.message || String(e);
-    jlog(job)(`❌ Tạo lại mẫu ${i + 1}: ${o.error}`);
+    o.status = o.file ? 'done' : 'error'; // tạo lại lỗi thì vẫn giữ ảnh cũ
+    o.error = 'Tạo lại chưa được: ' + (e.message || String(e));
+    jlog(job)(`❌ Tạo lại mẫu ${i + 1}: ${e.message || e}`);
   }
+  o.regen = null;
   saveJobFile(job);
   update();
-});
+}
 
 // Lấy kết quả từ hội thoại Work (khi app lỗi/hết giờ chờ mà ChatGPT vẫn làm tiếp).
 ipcMain.handle('job:collect', (_e, id) => { const job = findJob(id); if (job?.convUrl && !job.running) runAll(job, true); });
