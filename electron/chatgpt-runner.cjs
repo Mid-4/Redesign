@@ -661,6 +661,7 @@ async function inTab(payload, log, fn) {
     if (context && (!mainPage || mainPage.isClosed())) mainPage = context.pages().find((x) => !x.isClosed()) || (await context.newPage());
     tab = mainPage && !busyPages.has(mainPage) ? mainPage : await openWindow(log);
     busyPages.add(tab);
+    watchUsage(tab);
     if (payload.key != null) windowsByKey.set(payload.key, tab);
     return await tabStore.run(tab, fn);
   } finally {
@@ -707,12 +708,38 @@ const norm = (t) => String(t || '').toLowerCase().replace(/[\s_-]+/g, '');
  * Tài khoản ChatGPT đang đăng nhập: đọc phiên (/api/auth/session — đúng lời gọi trang ChatGPT tự gọi khi mở).
  * Chỉ lấy email / tên / gói / loại tài khoản / hạn phiên, KHÔNG giữ token. -> { email, name, plan, structure, expires }
  */
+/**
+ * Mức dùng ChatGPT (ô "Usage": giới hạn 5 giờ / tuần). Trang ChatGPT TỰ gọi /backend-api/wham/usage mỗi lần mở
+ * -> app chỉ nghe lại phản hồi đó (không gọi thêm gì). Mọi cửa sổ việc đều nghe -> chạy job xong là có số mới.
+ */
+let lastUsage = null;
+const watched = new WeakSet();
+function watchUsage(page) {
+  if (!page || watched.has(page)) return;
+  watched.add(page);
+  page.on('response', async (r) => {
+    if (!/\/backend-api\/wham\/usage\b/.test(r.url())) return;
+    try {
+      const j = await r.json();
+      const w = (x) => x && { used: Math.round(x.used_percent || 0), resetsAt: x.reset_at ? new Date(x.reset_at * 1000).toISOString() : '' };
+      lastUsage = {
+        at: new Date().toISOString(), plan: j.plan_type || '',
+        allowed: j.rate_limit?.allowed !== false, limitReached: !!j.rate_limit?.limit_reached,
+        five_hour: w(j.rate_limit?.primary_window), week: w(j.rate_limit?.secondary_window),
+      };
+    } catch {}
+  });
+}
+const usageSnapshot = () => lastUsage;
+
 function accountInfo(payload, log = noop) {
   return inTab(payload, log, async () => {
+    const start = Date.now();
     await ensureChatReady(log, false);
+    for (let i = 0; i < 16 && !(lastUsage && Date.parse(lastUsage.at) >= start); i++) await pg().waitForTimeout(500); // chờ trang tự tải mức dùng
     const s = await pg().evaluate(() => fetch('/api/auth/session', { credentials: 'include' }).then((r) => r.json()).catch(() => null));
     if (!s?.user) throw new Error('Không đọc được thông tin tài khoản ChatGPT.');
-    return { email: s.user.email || '', name: s.user.name || '', plan: s.account?.planType || '', structure: s.account?.structure || '', expires: s.expires || '' };
+    return { email: s.user.email || '', name: s.user.name || '', plan: s.account?.planType || '', structure: s.account?.structure || '', expires: s.expires || '', usage: lastUsage };
   });
 }
 
@@ -830,4 +857,4 @@ async function close() {
   context = null; mainPage = null;
 }
 
-module.exports = { accountInfo, workTask, prepare, setWatch, cancel, checkSetup, installSkill, close };
+module.exports = { accountInfo, usageSnapshot, workTask, prepare, setWatch, cancel, checkSetup, installSkill, close };

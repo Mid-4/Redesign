@@ -452,7 +452,7 @@ let acctBusy = false;
 function meter(label, w) {
   if (!w) return '';
   const cls = w.used >= 90 ? 'bad' : w.used >= 70 ? 'warn' : '';
-  return `<div class="meter"><span>${label}</span><i><b class="${cls}" style="width:${Math.min(100, w.used)}%"></b></i><span>${w.used}% · reset ${esc(fmtTime(w.resetsAt))}</span></div>`;
+  return `<div class="meter"><span>${label}</span><i><b class="${cls}" style="width:${Math.min(100, w.used)}%"></b></i><span>còn ${Math.max(0, 100 - w.used)}% · reset ${esc(fmtTime(w.resetsAt))}</span></div>`;
 }
 function renderAccount(a) {
   const g = a?.chatgpt || {}, c = a?.claude || {}, st = a?.stats || {}, u = c.usage;
@@ -462,12 +462,15 @@ function renderAccount(a) {
       ${g.email ? `<div class="ar"><b>${esc(g.email)}</b>${g.name ? ` · ${esc(g.name)}` : ''}</div>
       <div class="ar">Phiên đăng nhập hết hạn: ${esc(fmtTime(g.expires))}${g.checkedAt ? ` · kiểm tra ${esc(ago(g.checkedAt))}` : ''}</div>` : ''}
       ${g.error ? `<div class="ar err">${esc(g.error)}</div>` : ''}
-      <div class="ar">ChatGPT không công bố hạn mức tạo ảnh — xem số ảnh app đã tạo bên dưới.</div>
+      ${g.usage ? meter('5 giờ', g.usage.five_hour) + meter('Tuần', g.usage.week)
+          + (g.usage.limitReached || !g.usage.allowed ? '<div class="ar err">Đã chạm giới hạn ChatGPT — job sẽ lỗi tới lúc reset.</div>' : '')
+          + `<div class="ar">Mức dùng cập nhật ${esc(ago(g.usage.at))}</div>`
+        : (g.email ? '<div class="ar">Chưa đọc được mức dùng — bấm Làm mới.</div>' : '')}
     </div>
     <div class="acct-card">
       <div class="ah"><b>Claude</b>${c.loggedIn ? `<span class="chip ok">${esc(planName(c.plan))}${c.org ? ` · ${esc(c.org)}` : ''}</span>` : `<span class="chip ${c.checkedAt ? 'bad' : ''}">${c.checkedAt ? 'Chưa đăng nhập' : 'Chưa có thông tin'}</span>`}</div>
       ${c.email ? `<div class="ar"><b>${esc(c.email)}</b></div>` : ''}
-      ${u ? meter('5 giờ', u.five_hour) + meter('7 ngày', u.seven_day) + (u.status && u.status !== 'allowed' ? `<div class="ar err">Đang bị giới hạn (${esc(u.status)}) — bước phân tích sẽ lỗi tới lúc reset.</div>` : '') : (c.loggedIn ? '<div class="ar">Chưa đọc được mức dùng.</div>' : '')}
+      ${u ? meter('5 giờ', u.five_hour) + meter('Tuần', u.seven_day) + (u.status && u.status !== 'allowed' ? `<div class="ar err">Đang bị giới hạn (${esc(u.status)}) — bước phân tích sẽ lỗi tới lúc reset.</div>` : '') : (c.loggedIn ? '<div class="ar">Chưa đọc được mức dùng.</div>' : '')}
       ${c.usageAt ? `<div class="ar">Mức dùng cập nhật ${esc(ago(c.usageAt))}</div>` : ''}
     </div>
     <div class="acct-stats">

@@ -457,7 +457,17 @@ function usageStats() {
   }
   return s;
 }
-ipcMain.handle('account:get', () => ({ ...(getSettings().account || {}), stats: usageStats() }));
+// Mức dùng ChatGPT mới nhất (bắt được lúc chạy job) -> gộp vào thông tin đã lưu.
+function accountWithLive() {
+  const a = getSettings().account || {};
+  const live = runner.usageSnapshot();
+  if (live && (!a.chatgpt?.usage || Date.parse(live.at) > Date.parse(a.chatgpt.usage.at || 0))) {
+    a.chatgpt = { ...(a.chatgpt || {}), usage: live };
+    setSettings({ account: a });
+  }
+  return { ...a, stats: usageStats() };
+}
+ipcMain.handle('account:get', () => accountWithLive());
 // Làm mới: ChatGPT mở ngầm 1 cửa sổ đọc phiên (~10–20s); Claude đọc trạng thái + 1 câu ngắn để lấy mức dùng (~5s).
 ipcMain.handle('account:refresh', async () => {
   const [g, c, u] = await Promise.all([
@@ -467,7 +477,7 @@ ipcMain.handle('account:refresh', async () => {
   ]);
   const prev = getSettings().account || {};
   const account = {
-    chatgpt: g.ok ? { ...g, checkedAt: new Date().toISOString() } : { ...(prev.chatgpt || {}), error: g.error },
+    chatgpt: g.ok ? { ...g, usage: g.usage || prev.chatgpt?.usage || null, checkedAt: new Date().toISOString() } : { ...(prev.chatgpt || {}), error: g.error },
     claude: { ...c, usage: u || prev.claude?.usage || null, usageAt: u ? new Date().toISOString() : prev.claude?.usageAt || '', checkedAt: new Date().toISOString() },
   };
   setSettings({ account, ...(g.ok ? { loginOk: true } : {}), claudeOk: !!c.loggedIn, claudeEmail: c.email || '' });
