@@ -359,27 +359,40 @@ function setupStatus() {
 const setupChanged = () => send('setup:update', setupStatus());
 
 ipcMain.handle('setup:status', () => setupStatus());
-/** Cài / cập nhật skill tự động (ngầm). skillOk chỉ đúng khi tài khoản có skill VÀ là đúng bản đi kèm app này. */
-async function autoInstallSkill() {
-  log('Đang tự cài skill vào tài khoản ChatGPT (chạy ngầm)…');
-  let r;
-  try { r = await runner.installSkill({ ...runnerPaths(), skill: getSettings().skillName, zipPath: skillZip() }, log); }
-  catch (e) { log('Cài skill lỗi: ' + (e.message || e)); r = { ok: false }; }
-  setSettings(r.ok ? { skillOk: true, skillHash: skillHash() } : { skillOk: false });
-  setupChanged();
-  if (!r.ok) throw new Error('Chưa chuẩn bị xong tài khoản — bấm Thử lại.');
+/**
+ * Tải skill của app lên tài khoản ChatGPT (ngầm). Chỉ 1 lượt cài tại 1 thời điểm — trước đây lượt tự cập nhật
+ * lúc mở app và lượt của bước kiểm tra chạy chồng nhau -> ChatGPT báo "Couldn't upload this skill" (12/11).
+ * quiet = cập nhật nền (bản app mới mang skill mới): lỗi thì chỉ ghi log, KHÔNG đánh dấu tài khoản hỏng
+ * (tài khoản vẫn có skill cũ dùng được), lần mở app sau thử lại.
+ */
+let installing = null;
+function autoInstallSkill({ quiet = false } = {}) {
+  if (!installing) {
+    installing = (async () => {
+      log('Đang tự cài skill vào tài khoản ChatGPT (chạy ngầm)…');
+      try { return await runner.installSkill({ ...runnerPaths(), skill: getSettings().skillName, zipPath: skillZip() }, log); }
+      catch (e) { log('Cài skill lỗi: ' + (e.message || e)); return { ok: false }; }
+    })().finally(() => { installing = null; });
+  }
+  return installing.then((r) => {
+    if (r.ok) setSettings({ skillOk: true, skillHash: skillHash() });
+    else if (!quiet) setSettings({ skillOk: false });
+    setupChanged();
+    if (!r.ok && !quiet) throw new Error('Chưa chuẩn bị xong tài khoản — bấm Thử lại.');
+  });
 }
 
-// Kiểm tra ngầm đăng nhập + skill; đã đăng nhập mà thiếu skill / skill cũ -> tự cài luôn.
+// Kiểm tra ngầm đăng nhập + skill. Tài khoản ĐÃ CÓ skill đúng tên -> xong, không cài lại;
+// chưa có -> mới tải skill của app lên. (Cập nhật skill khi app có bản mới: refreshSkillIfChanged, chạy nền.)
 ipcMain.handle('setup:check', async () => {
   await claudeCheck().catch(() => {}); // Claude: chỉ đọc trạng thái trên máy (~1–2s)
   let r;
   try { r = await runner.checkSetup({ ...runnerPaths(), skill: getSettings().skillName }, log); }
   catch (e) { log('Kiểm tra lỗi: ' + (e.message || e)); throw new Error('Chưa kiểm tra được — thử lại sau ít phút.'); }
-  const current = r.skill && getSettings().skillHash === skillHash();
-  setSettings({ loginOk: r.loggedIn, skillOk: current });
+  if (installing) await installing.catch(() => {}); // đang có lượt cài (tự cập nhật lúc mở app) -> chờ, không cài chồng
+  setSettings({ loginOk: r.loggedIn, skillOk: r.loggedIn && r.skill });
   setupChanged();
-  if (r.loggedIn && !current) await autoInstallSkill();
+  if (r.loggedIn && !r.skill) await autoInstallSkill();
   return setupStatus();
 });
 // App mới cài bản skill khác (VD thêm chế độ Scale) -> tự cài lại ngầm khi mở app; job chờ cài xong mới gửi.
@@ -388,7 +401,7 @@ function refreshSkillIfChanged() {
   const st = getSettings();
   if (!st.loginOk || !st.skillOk || !skillHash() || st.skillHash === skillHash()) return;
   log('Skill đi kèm app đã đổi — tự cập nhật vào tài khoản ChatGPT…');
-  skillReady = autoInstallSkill().catch(() => {});
+  skillReady = autoInstallSkill({ quiet: true }).catch(() => {});
 }
 // Claude (bước phân tích của job Scale): cài bằng bộ cài chính thức + đăng nhập tài khoản Claude trên trình duyệt.
 async function claudeCheck() {
