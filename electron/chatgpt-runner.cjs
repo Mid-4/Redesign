@@ -150,6 +150,25 @@ function clearMaximized(profileDir) {
   } catch {}
 }
 
+/**
+ * Không cho Chrome khôi phục phiên cũ: app bị tắt giữa chừng -> hồ sơ đánh dấu "Crashed" -> lần mở sau Chrome
+ * tự mở lại mọi cửa sổ cũ (about:blank, chatgpt.com…) sau ~30s (lỗi đã gặp 12/11). Đánh dấu tắt bình thường
+ * + xoá dữ liệu phiên/tab (chỉ file phiên — đăng nhập, cookie giữ nguyên).
+ */
+function noSessionRestore(profileDir) {
+  const f = path.join(profileDir, 'Default', 'Preferences');
+  try {
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    j.profile = { ...(j.profile || {}), exit_type: 'Normal', exited_cleanly: true };
+    j.session = { ...(j.session || {}), restore_on_startup: 5 }; // 5 = mở trang tab mới, không khôi phục
+    fs.writeFileSync(f, JSON.stringify(j));
+  } catch {}
+  for (const d of ['Sessions', 'Sessions_Encrypted']) {
+    const dir = path.join(profileDir, 'Default', d);
+    try { for (const x of fs.readdirSync(dir)) fs.rmSync(path.join(dir, x), { force: true, recursive: true }); } catch {}
+  }
+}
+
 /** Ép vị trí cửa sổ qua CDP (chốt chặn cuối nếu Chrome tự đặt cửa sổ theo trạng thái đã nhớ). */
 async function placeWindow(bounds, log, target = mainPage) {
   try {
@@ -173,10 +192,11 @@ async function ensureContext(profileDir, log, visible) {
   log(wantVisible ? 'Mở Chrome (hiện cửa sổ)…' : 'Chạy ChatGPT NGẦM (ẩn cửa sổ)…');
   fs.mkdirSync(profileDir, { recursive: true });
   if (!wantVisible) clearMaximized(profileDir);
+  noSessionRestore(profileDir);
   // Cửa sổ đăng nhập: kích thước cố định (KHÔNG maximize, để profile không nhớ trạng thái phóng to).
   const args = wantVisible
     ? [`--window-position=${ONSCREEN.left},${ONSCREEN.top}`, `--window-size=${ONSCREEN.width},${ONSCREEN.height}`, '--disable-blink-features=AutomationControlled']
-    : ['--disable-blink-features=AutomationControlled',
+    : ['--disable-blink-features=AutomationControlled', '--hide-crash-restore-bubble',
        ...(headless ? [] : [`--window-position=${OFFSCREEN.left},${OFFSCREEN.top}`, `--window-size=${OFFSCREEN.width},${OFFSCREEN.height}`])];
   try {
     context = await chromium.launchPersistentContext(profileDir, {
@@ -195,7 +215,14 @@ async function ensureContext(profileDir, log, visible) {
     throw e;
   }
   mainPage = context.pages()[0] || (await context.newPage());
-  context.on('close', () => { context = null; mainPage = null; });
+  context.on('close', () => { context = null; mainPage = null; busyPages.clear(); });
+  // Cửa sổ gốc bị đóng (huỷ job đang dùng nó) -> lấy cửa sổ khác còn mở làm gốc.
+  context.on('page', (p) => p.on('close', () => {
+    busyPages.delete(p);
+    if (p === mainPage) mainPage = context?.pages().find((x) => !x.isClosed()) || null;
+  }));
+  const first = mainPage;
+  first.on('close', () => { busyPages.delete(first); if (mainPage === first) mainPage = context?.pages().find((x) => !x.isClosed()) || null; });
   hidden = !wantVisible && !headless;
   if (!headless) await placeWindow(hidden ? OFFSCREEN : ONSCREEN, log);
 }
@@ -594,6 +621,9 @@ function withSendLock(log, fn) {
  * còn mỗi cửa sổ có 1 tab đang hiện nên luôn được vẽ. Tạo lần lượt để bắt đúng page mới.
  */
 const windowsByKey = new Map(); // key việc -> cửa sổ (để huỷ)
+// Cửa sổ đang có việc. Việc đầu dùng luôn cửa sổ gốc (about:blank lúc mở Chrome) -> 1 job chỉ 1 cửa sổ;
+// việc thứ 2 trở đi mới mở thêm cửa sổ (trước đây luôn mở thêm -> lúc chạy 1 job vẫn thấy 2 cửa sổ Chrome).
+const busyPages = new Set();
 let winLock = Promise.resolve();
 let winCount = 0;
 function windowBounds() {
@@ -628,13 +658,18 @@ async function inTab(payload, log, fn) {
       if (!ctxReady) ctxReady = ensureContext(payload.profileDir, log, false).finally(() => { ctxReady = null; });
       await ctxReady;
     }
-    tab = await openWindow(log);
+    if (context && (!mainPage || mainPage.isClosed())) mainPage = context.pages().find((x) => !x.isClosed()) || (await context.newPage());
+    tab = mainPage && !busyPages.has(mainPage) ? mainPage : await openWindow(log);
+    busyPages.add(tab);
     if (payload.key != null) windowsByKey.set(payload.key, tab);
     return await tabStore.run(tab, fn);
   } finally {
     if (payload.key != null && windowsByKey.get(payload.key) === tab) windowsByKey.delete(payload.key);
     active--;
-    await tab?.close().catch(() => {});
+    busyPages.delete(tab);
+    // Cửa sổ gốc giữ lại (đưa về trang trắng) để giữ phiên Chrome; cửa sổ mở thêm thì đóng.
+    if (tab && tab === mainPage) await tab.goto('about:blank').catch(() => {});
+    else await tab?.close().catch(() => {});
     if (active === 0) scheduleCloseTimer(log);
   }
 }
