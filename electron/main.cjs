@@ -297,10 +297,11 @@ async function runAll(job, collect = false) {
         ...hooks(job),
         skill: getSettings().skillName,
         // Có brief của Claude -> skill chỉ vẽ theo brief (phòng hờ không có brief thì skill tự phân tích như bản đầu).
-        message: job.designs?.length
-          ? P.briefMessage({ ...msgArgs, designs: pickedDesigns(job), kind: job.mode === 'scale' ? 'scale' : 'redesign' })
-          : P.skillMessage(msgArgs),
-        images: [job.design],
+        // Có brief của Claude -> tin nhắn CHỈ gọi @skill, brief nằm trong file comfort-brief.md đính kèm.
+        message: job.designs?.length ? '' : P.skillMessage(msgArgs),
+        images: job.designs?.length
+          ? [job.design, { fileName: P.BRIEF_FILE, text: P.briefFile({ ...msgArgs, designs: pickedDesigns(job), kind: job.mode === 'scale' ? 'scale' : 'redesign' }) }]
+          : [job.design],
         expect,
         onUrl: (u) => { job.convUrl = u; saveJobFile(job); update(); },
       }, jlog(job));

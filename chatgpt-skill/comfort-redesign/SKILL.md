@@ -10,7 +10,8 @@ Turn the design into 5 redesign options made for that product and deliver 5 squa
 Never ask clarifying questions — use the defaults below and finish the whole task in one go.
 
 Modes:
-- **REDESIGN** (default) — message starts with `Create 5 options` → Steps 1–4 below.
+- **BRIEF FILE (most common)** — a file `comfort-brief.md` is attached next to the design image (the message may be empty, only the skill call). Read that file FIRST: it starts with `# COMFORT BRIEF` and gives `Mode:` (REDESIGN or SCALE), `Images:` N, `Product:`, `Model:`, `Note:` and N designs as `## #N <name>` + `Shirt color:` line + brief text. Follow section **BRIEF MODE** at the end with exactly those N designs, in that order. Never treat the .md file as a design image.
+- **REDESIGN** (default) — message starts with `Create 5 options` (or no brief file and no instructions) → Steps 1–4 below.
 - **REDESIGN FROM BRIEFS** — message starts with `Render N redesign options from these briefs` → the analysis and planning (Steps 1–2) are already done: skip them, follow section **BRIEF MODE** at the end, and KEEP the attached artwork and all its text exactly.
 - **SCALE** — message starts with `Render N scale designs from these briefs` → follow the section **SCALE MODE** at the end (render the given briefs). It uses the same Inputs, PRODUCTS and image rules.
 
@@ -100,7 +101,7 @@ If an option still failed, write `N. FAILED — <short reason>` on its line.
 If the user later writes `Regenerate #N` (optionally with a note), create ONE new image for direction N (same product, same direction, fresh variation, same rules) and reply with one line: `N. <direction name> — <product/shirt color> — <one-line style summary>`.
 
 ## SCALE MODE / BRIEF MODE (render from briefs)
-The analysis and design planning were already done. The message starts with `Render N scale designs from these briefs` (SCALE: new designs) or `Render N redesign options from these briefs` (REDESIGN: same artwork and text, new layout and style), then gives Product / Model / Note and one brief per design: `#N <name> | Shirt color: <color> | <brief>`.
+The analysis and design planning were already done. The briefs come from the attached `comfort-brief.md` (`Mode: REDESIGN` = same artwork and text, new layout and style; `Mode: SCALE` = new designs), or from a message starting with `Render N scale designs from these briefs` / `Render N redesign options from these briefs` with one brief per design: `#N <name> | Shirt color: <color> | <brief>`.
 
 - Create N images strictly ONE AT A TIME in order #1 → #N, so image N is brief #N. Exactly ONE image per brief — never extra variants or second attempts of an image that already succeeded (extra images break the order). Follow each brief exactly (subject, art details, EXACT text letter for letter, layout, style, palette, print placement, background). SCALE: new text and new subjects in the briefs are intended — do not replace them with the original design; the attached image is only the reference for quality, rendering style and print feel.
 - REDESIGN: the attached image is the artwork to reuse — keep its illustration and ALL its text exactly (letter for letter, no new words); only layout and style change as the brief says.

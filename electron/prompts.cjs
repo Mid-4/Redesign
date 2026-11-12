@@ -117,6 +117,31 @@ Return JSON only (it is validated against a schema):
  * Tin nhắn gửi skill (ChatGPT Work) tạo mockup theo brief Claude đã viết.
  * kind 'redesign' = giữ art + chữ của design đính kèm; 'scale' = thiết kế mới, design gốc chỉ để tham khảo chất lượng.
  */
+/**
+ * File brief đính kèm (comfort-brief.md) — thay cho tin nhắn dài: tin nhắn chỉ còn @skill, mọi thông tin
+ * (chế độ, sản phẩm, người mẫu, màu, ghi chú, các hướng đã chọn) nằm trong file này, skill đọc file rồi làm.
+ * kind 'redesign' = giữ art + chữ của design đính kèm; 'scale' = thiết kế mới theo brief.
+ */
+const BRIEF_FILE = 'comfort-brief.md';
+function briefFile({ product, model, color, note, designs, kind = 'scale' }) {
+  const p = findProduct(product);
+  const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  return [
+    '# COMFORT BRIEF',
+    `Mode: ${kind === 'redesign' ? 'REDESIGN' : 'SCALE'}`,
+    `Images: ${designs.length}`,
+    `Product: ${p.name}`,
+    p.wear ? `Model: ${model || 'woman'}` : '',
+    note ? `Note: ${clean(note)}` : '',
+    '',
+    kind === 'redesign'
+      ? 'Keep the attached design\'s artwork and ALL its text exactly; change only layout and style as each design below says.'
+      : 'New scale designs: follow each design below; the attached image is only the quality and style reference.',
+    '',
+    ...designs.flatMap((d, i) => [`## #${i + 1} ${clean(d.name)}`, `${p.cc ? 'Shirt color' : 'Color'}: ${clean(color || d.shirt_color)}`, clean(d.brief), '']),
+  ].filter((x, k, a) => x !== '' || a[k - 1] !== '').join('\n');
+}
+
 function briefMessage({ product, model, color, note, designs, kind = 'scale' }) {
   const p = findProduct(product);
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
@@ -152,4 +177,4 @@ function parseLines(text) {
   return out;
 }
 
-module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };
+module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, briefFile, BRIEF_FILE, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };

@@ -24,7 +24,9 @@ const SEL = {
   // Dấu hiệu CHƯA đăng nhập.
   signIn: ['[data-testid="login-button"]', '[data-testid="signup-button"]', 'button:has-text("Log in")', 'a:has-text("Log in")', 'button:has-text("Sign up")', 'button:has-text("Đăng nhập")'],
   // Input file để đính kèm ảnh (thường ẩn).
-  fileInput: ['input[type="file"]'],
+  // Ưu tiên ô nhận nhiều file mọi loại (ảnh + file brief .md); tránh ô "Take a photo" (chỉ 1 ảnh, accept="image/*").
+  fileInput: ['input[type="file"][multiple]:not([accept^="image"]):not([capture])', 'input[type="file"][multiple]:not([capture])',
+    'input[type="file"]:not([capture]):not([accept^="image"])', 'input[type="file"]:not([capture])', 'input[type="file"]'],
   // Nút "+" mở menu đính kèm.
   attachBtn: [
     'button[data-testid="composer-plus-btn"]',
@@ -127,6 +129,13 @@ function writeTempImages(images) {
   const dir = path.join(os.tmpdir(), 'comfort-redesign-chatgpt');
   fs.mkdirSync(dir, { recursive: true });
   return images.map((im, i) => {
+    if (im.text != null) { // file chữ (brief): giữ đúng tên file để skill nhận ra
+      const sub = path.join(dir, `b-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+      fs.mkdirSync(sub, { recursive: true });
+      const f = path.join(sub, im.fileName || 'brief.md');
+      fs.writeFileSync(f, im.text, 'utf8');
+      return f;
+    }
     const ext = (im.mimeType?.split('/')[1] || 'png').replace('jpeg', 'jpg');
     const p = path.join(dir, `ref-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${i}.${ext}`);
     fs.writeFileSync(p, Buffer.from(im.base64, 'base64'));
@@ -547,9 +556,9 @@ async function workTaskOnce({ url, skill, message, images, expect = 1, downloadD
       if (imagePaths.length) {
         await withRetry('Đính kèm ảnh', async () => { await attachImages(imagePaths, log); await pg().waitForTimeout(2500); }, log);
       }
-      let text = message;
-      if (skill && !(await mentionSkill(skill, log))) text = `Use the "${skill}" skill. ${message}`;
-      await typeText((skill ? ' ' : '') + text, log);
+      let text = message || '';
+      if (skill && !(await mentionSkill(skill, log))) text = `Use the "${skill}" skill. ${text}`.trim();
+      if (text) await typeText((skill ? ' ' : '') + text, log); // brief nằm trong file đính kèm -> chỉ @skill
       await clickSend(log);
       for (let i = 0; i < 15 && !/\/c\//.test(pg().url()); i++) await pg().waitForTimeout(1000);
     });
