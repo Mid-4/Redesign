@@ -394,7 +394,72 @@ function render() {
   refreshButtons();
   renderQueue();
   renderDetail();
+  renderTiles();
+  const active = jobs.filter((j) => j.running || j.stage === 'queued').length;
+  $('navBadge').hidden = !active; $('navBadge').textContent = active;
+  // có thêm ảnh xong -> cập nhật biểu đồ + thống kê
+  const done = jobs.reduce((n, j) => n + j.options.filter((o) => o.status === 'done').length, 0);
+  if (done !== lastDone) { lastDone = done; loadDash(); }
 }
+
+// ------------------------------- Bảng điều khiển (ô số liệu + biểu đồ) -----------
+let dash = null, lastDone = -1, dashTimer = null;
+function loadDash() {
+  clearTimeout(dashTimer);
+  dashTimer = setTimeout(async () => { dash = await window.api.account.get().catch(() => dash); renderTiles(); renderChart(); renderAvatar(); }, 400);
+}
+setInterval(loadDash, 60000);
+function tile(label, value, sub, bar, tip = '') {
+  const cls = bar == null ? '' : bar >= 90 ? 'bad' : bar >= 70 ? 'warn' : '';
+  return `<div class="tile" title="${esc(tip)}"><div class="tl">${label}</div><div class="tv">${value}</div>
+    ${bar == null ? '' : `<div class="tbar"><b class="${cls}" style="width:${Math.min(100, bar)}%"></b></div>`}
+    <div class="ts">${sub}</div></div>`;
+}
+function renderTiles() {
+  const run = jobs.filter((j) => j.running).length, wait = jobs.filter((j) => j.stage === 'queued').length;
+  const pick = jobs.filter((j) => j.stage === 'review').length;
+  const st = dash?.stats || {}, g = dash?.chatgpt?.usage, c = dash?.claude?.usage;
+  const left = (w) => (w ? Math.max(0, 100 - w.used) : null);
+  const usageTile = (name, u) => (u?.five_hour
+    ? tile(`${name} · 5 giờ`, `${left(u.five_hour)}%<small>còn</small>`, `Tuần còn ${left(u.week || u.seven_day) ?? '—'}%`, u.five_hour.used, `5 giờ reset ${fmtTime(u.five_hour.resetsAt)}`)
+    : tile(`${name} · mức dùng`, '—', 'Mở Tài khoản &amp; mức dùng để cập nhật'));
+  $('tiles').innerHTML = [
+    tile('Job đang chạy', `${run}<small>/ ${wait} chờ</small>`, pick ? `${pick} job chờ chọn hướng` : `${jobs.length} job trong danh sách`),
+    tile('Ảnh tạo hôm nay', `${st.imagesToday ?? 0}`, `7 ngày: ${st.images7 ?? 0} ảnh`),
+    usageTile('ChatGPT', g),
+    usageTile('Claude', c),
+  ].join('');
+}
+function renderChart() {
+  const days = dash?.stats?.days || [];
+  const max = Math.max(1, ...days.map((d) => d.images));
+  const last = days.length - 1;
+  $('bars').innerHTML = days.map((d, k) => `<div class="bc ${k === last ? 'today' : ''}" title="${esc(d.d)}: ${d.images} ảnh · ${d.jobs} job">
+      <span class="bv">${d.images || ''}</span><i class="bb" style="height:${Math.round((d.images / max) * 118)}px"></i></div>`).join('')
+    + '';
+  let x = $('barsX');
+  if (!x) { x = document.createElement('div'); x.id = 'barsX'; x.className = 'bars-x'; $('bars').after(x); }
+  x.innerHTML = days.map((d, k) => `<span class="${k === last ? 'today' : ''}">${k === last ? 'Hôm nay' : esc(d.d)}</span>`).join('');
+  $('chartSum').textContent = `${dash?.stats?.images7 ?? 0} ảnh · ${dash?.stats?.jobs7 ?? 0} job`;
+}
+function renderAvatar() {
+  const email = dash?.chatgpt?.email || dash?.claude?.email || '';
+  $('avatar').textContent = (email[0] || '?').toUpperCase();
+  $('avatar').title = email ? `Tài khoản: ${email}` : 'Tài khoản';
+}
+
+// Menu bên trái: đổi màn (Bảng điều khiển / Hàng đợi) hoặc mở hộp thoại.
+const VIEW_TITLE = { dash: 'Bảng điều khiển', queue: 'Hàng đợi job' };
+$('nav').onclick = (e) => {
+  const b = e.target.closest('.nav-i'); if (!b) return;
+  if (b.dataset.view) {
+    $('board').dataset.view = b.dataset.view;
+    $('pageTitle').textContent = VIEW_TITLE[b.dataset.view];
+    for (const x of document.querySelectorAll('.nav-i[data-view]')) x.classList.toggle('on', x === b);
+  } else if (b.dataset.nav === 'account') $('btnSettings').click();
+  else if (b.dataset.nav === 'setup') openSetup();
+};
+$('avatar').onclick = () => $('btnSettings').click();
 
 function openDetail(id) { selId = id; $('dlgJob').showModal(); renderDetail(); }
 

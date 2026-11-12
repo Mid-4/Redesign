@@ -445,14 +445,19 @@ function usageStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const t0 = today.getTime(), t7 = t0 - 6 * 86400000;
   const s = { jobsToday: 0, jobs7: 0, imagesToday: 0, images7: 0, analysesToday: 0, analyses7: 0 };
+  // 7 ngày (cũ -> hôm nay) cho biểu đồ trên bảng điều khiển
+  const p2 = (n) => String(n).padStart(2, '0');
+  s.days = Array.from({ length: 7 }, (_, k) => { const d = new Date(t7 + k * 86400000); return { d: `${p2(d.getDate())}/${p2(d.getMonth() + 1)}`, images: 0, jobs: 0 }; });
+  const dayIdx = (t) => Math.floor((t - t7) / 86400000);
   for (const m of metas) {
     const c = Date.parse(m.createdAt || '') || 0;
     if (c >= t0) s.jobsToday++;
+    if (c >= t7 && s.days[dayIdx(c)]) s.days[dayIdx(c)].jobs++;
     if (c >= t7) { s.jobs7++; if (m.designs?.length) { s.analyses7++; if (c >= t0) s.analysesToday++; } }
     for (const o of m.options || []) {
       if (!o.file || !o.t) continue;
       if (o.t >= t0) s.imagesToday++;
-      if (o.t >= t7) s.images7++;
+      if (o.t >= t7) { s.images7++; if (s.days[dayIdx(o.t)]) s.days[dayIdx(o.t)].images++; }
     }
   }
   return s;
