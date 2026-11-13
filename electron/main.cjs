@@ -139,25 +139,29 @@ const runnerPaths = () => ({
   downloadDir: path.join(app.getPath('temp'), 'comfort-redesign'), // ảnh tải tạm + ảnh chụp lỗi
 });
 
-/** Ép ảnh về đúng 1:1 (cắt giữa) + lưu PNG. Ảnh không đọc được (webp…) thì giữ nguyên. */
-function saveSquare(srcPath, outPath, log) {
+// Tỉ lệ ảnh mockup: '1:1' (vuông) | '4:5' (dọc). Chọn ở form tạo job + chọn lại riêng từng ảnh khi Tạo lại.
+const RATIOS = { '1:1': 1, '4:5': 4 / 5 };
+const normRatio = (r) => (RATIOS[r] ? r : '1:1');
+/** Ép ảnh về đúng tỉ lệ (cắt giữa) + lưu PNG. Ảnh không đọc được (webp…) thì giữ nguyên. */
+function saveRatio(srcPath, outPath, ratio, log) {
   const img = nativeImage.createFromPath(srcPath);
   if (img.isEmpty()) { fs.copyFileSync(srcPath, outPath); return; }
   const { width: w, height: h } = img.getSize();
+  const k = RATIOS[normRatio(ratio)];
   let out = img;
-  if (Math.abs(w - h) / Math.max(w, h) > 0.01) {
-    const s = Math.min(w, h);
-    out = img.crop({ x: Math.floor((w - s) / 2), y: Math.floor((h - s) / 2), width: s, height: s });
-    log(`Ảnh ${w}×${h} -> cắt giữa thành ${s}×${s} (1:1).`);
+  if (Math.abs(w / h - k) / k > 0.01) {
+    const cw = w / h > k ? Math.round(h * k) : w, ch = w / h > k ? h : Math.round(w / k);
+    out = img.crop({ x: Math.floor((w - cw) / 2), y: Math.floor((h - ch) / 2), width: cw, height: ch });
+    log(`Ảnh ${w}×${h} -> cắt giữa thành ${cw}×${ch} (${normRatio(ratio)}).`);
   }
   fs.writeFileSync(outPath, out.toPNG());
 }
 
-/** Lưu ảnh tải về thành option-N-<tên>.png (không ghi đè bản cũ), ép 1:1. */
+/** Lưu ảnh tải về thành option-N-<tên>.png (không ghi đè bản cũ), ép đúng tỉ lệ (mặc định tỉ lệ của job). */
 // Tên file: có mã design -> "<mã>-<số thứ tự>.png" (tạo lại: "<mã>-<số>_v2.png", file cũ giữ nguyên);
 // job cũ chưa có mã -> như trước "option-N-<tên hướng>.png".
 const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, '-').replace(/\s+/g, ' ').replace(/^[ .-]+|[ .-]+$/g, '').slice(0, 60);
-function saveOption(job, i, src) {
+function saveOption(job, i, src, ratio = job.ratio) {
   const o = job.options[i];
   const code = safeName(job.designCode);
   let n = 1, out;
@@ -165,8 +169,9 @@ function saveOption(job, i, src) {
     out = path.join(job.dir, code ? `${code}-${i + 1}${n > 1 ? `_v${n}` : ''}.png` : `option-${i + 1}-${slug(o.name)}${n > 1 ? `-${n}` : ''}.png`);
     n++;
   } while (fs.existsSync(out));
-  saveSquare(src, out, jlog(job));
+  saveRatio(src, out, ratio, jlog(job));
   try { fs.unlinkSync(src); } catch {}
+  o.ratio = normRatio(ratio);
   o.file = out; o.t = Date.now(); o.status = 'done'; o.error = null;
 }
 
@@ -227,7 +232,7 @@ function assignResults(job, r) {
   if (r.files.length > slots.length) r.files = pruneExtras(r.files, slots.length, jlog(job));
   r.files.forEach((f, k) => {
     const i = slots[k];
-    if (i !== undefined && job.options[i].status !== 'done') saveOption(job, i, f);
+    if (i !== undefined && job.options[i].status !== 'done') saveOption(job, i, f, job.ratio);
     else try { fs.unlinkSync(f); } catch {}
   });
   job.options.forEach((o, i) => {
@@ -276,7 +281,7 @@ async function runAll(job, collect = false) {
   job.options.forEach((o) => { if (o.status !== 'done') { o.status = 'run'; o.error = null; } });
   update();
   const expect = job.options.length;
-  const msgArgs = { product: job.product, model: job.model, color: job.color, note: job.note };
+  const msgArgs = { product: job.product, model: job.model, color: job.color, note: job.note, ratio: normRatio(job.ratio) };
   try {
     // Bước đầu mọi job: Claude phân tích design (làm 1 lần — Thử lại không phân tích lại).
     //  - Scale: + research thị trường -> 5 hướng scale -> DỪNG chờ nhân viên chọn hướng (job:pick).
@@ -355,7 +360,7 @@ async function runGemini(job, refImgs, msgArgs, only = null, regenNote = '') {
       const prompt = P.geminiPrompt({ ...msgArgs, design: designs[i], kind, refCount: refImgs.length, imgNote: job.imgNote, regenNote });
       jlog(job)(`Gemini: tạo mẫu ${i + 1}/${job.options.length}…`);
       const r = await gemini.generate({ ...geminiPaths(), prompt, images: [job.design, ...refImgs], model: getSettings().geminiModel || '' }, jlog(job));
-      saveOption(job, i, r.path);
+      saveOption(job, i, r.path, msgArgs.ratio);
       ok++; job.imgCount = (job.imgCount || 0) + 1;
     } catch (e) {
       lastErr = e;
@@ -587,7 +592,7 @@ ipcMain.handle('setup:getChrome', () => shell.openExternal('https://www.google.c
 ipcMain.handle('chatgpt:watch', (_e, on) => runner.setWatch(on, log));
 
 // mode: 'redesign' (5 hướng redesign) | 'scale' (research các sàn + 4 mẫu scale + báo cáo).
-ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note, mode, designCode, refs = [], imgNote = '' }) => {
+ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note, mode, designCode, refs = [], imgNote = '', ratio = '1:1' }) => {
   const prod = P.findProduct(product);
   const scale = mode === 'scale';
   const code = safeName(designCode);
@@ -608,7 +613,7 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
   });
   const job = {
     id: ++seq, name, dir, designFile, design: { base64, mimeType },
-    mode: scale ? 'scale' : 'redesign', engine: getSettings().engine === 'gemini' ? 'gemini' : 'chatgpt', report: '', designCode: code, refFiles, imgNote: String(imgNote || '').trim(),
+    mode: scale ? 'scale' : 'redesign', engine: getSettings().engine === 'gemini' ? 'gemini' : 'chatgpt', report: '', designCode: code, refFiles, imgNote: String(imgNote || '').trim(), ratio: normRatio(ratio),
     product: prod.name, model: prod.wear ? (model || 'woman') : '', color: prod.cc ? (color || '') : '', note: note || '',
     code: jobCode(scale ? 'SC' : 'CR'), createdAt: new Date().toISOString(), step: 'queue', stepAt: new Date().toISOString(),
     stage: 'queued', running: false, error: null, convUrl: null, options: [],
@@ -625,11 +630,11 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
 // Tạo lại 1 mẫu: gửi "Regenerate #N" vào đúng hội thoại Work của job (mở tab riêng).
 // Mỗi mẫu có ô mô tả riêng (note). Các lần tạo lại trong CÙNG 1 job chạy lần lượt (cùng 1 hội thoại
 // ChatGPT — gửi song song sẽ lẫn ảnh giữa các mẫu); mẫu đang chờ hiện "Chờ tạo lại".
-ipcMain.handle('job:regen', (_e, id, i, note) => {
+ipcMain.handle('job:regen', (_e, id, i, note, ratio) => {
   const job = findJob(id);
   const o = job?.options[i];
   if (!o || job.running || o.regen || (!job.convUrl && !job.designs?.length)) return;
-  o.regen = 'wait'; o.regenNote = String(note || '').trim(); o.error = null; update();
+  o.regen = 'wait'; o.regenNote = String(note || '').trim(); o.regenRatio = normRatio(ratio || o.ratio || job.ratio); o.error = null; update();
   job.regenChain = (job.regenChain || Promise.resolve()).then(() => regenOne(job, i)).catch(() => {});
 });
 
@@ -637,7 +642,9 @@ async function regenOne(job, i) {
   const o = job.options[i];
   o.regen = 'run'; o.status = 'run'; update();
   try {
+    const ratio = normRatio(o.regenRatio || o.ratio || job.ratio);
     if (o.regenNote) jlog(job)(`Tạo lại mẫu ${i + 1} với mô tả: ${o.regenNote}`);
+    jlog(job)(`Tạo lại mẫu ${i + 1} — tỉ lệ ${ratio}.`);
     const eng = curEngine();
     const loadRefs = () => (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => ({ base64: fs.readFileSync(f).toString('base64'), mimeType: `image/${path.extname(f).slice(1).replace('jpg', 'jpeg')}` }));
     if (!job.design) job.design = { base64: fs.readFileSync(job.designFile).toString('base64'), mimeType: `image/${path.extname(job.designFile).slice(1).replace('jpg', 'jpeg')}` };
@@ -645,14 +652,14 @@ async function regenOne(job, i) {
     if (eng === 'chatgpt' && (!job.convUrl || job.engine === 'gemini') && job.designs?.length) {
       const refImgs = loadRefs();
       const d = pickedDesigns(job)[i];
-      const brief = P.briefFile({ product: job.product, model: job.model, color: job.color, note: [job.note, o.regenNote && `Change requested: ${o.regenNote}`].filter(Boolean).join(' · '),
+      const brief = P.briefFile({ product: job.product, model: job.model, color: job.color, ratio, note: [job.note, o.regenNote && `Change requested: ${o.regenNote}`].filter(Boolean).join(' · '),
         designs: [d], kind: job.mode === 'scale' ? 'scale' : 'redesign', refCount: refImgs.length, imgNote: job.imgNote });
       await skillReady;
       const r = await runner.workTask({ ...runnerPaths(), key: `${job.id}-r${i}`, skill: getSettings().skillName, message: '', expect: 1,
         images: [job.design, ...refImgs, { fileName: P.BRIEF_FILE, text: brief }] }, jlog(job));
       if (!r.files.length) throw new Error('ChatGPT không tạo lại được.');
       r.files.slice(0, -1).forEach((f) => { try { fs.unlinkSync(f); } catch {} });
-      saveOption(job, i, r.files[r.files.length - 1]);
+      saveOption(job, i, r.files[r.files.length - 1], ratio);
       applyDesigns(job);
       o.regen = null; saveJobFile(job); update();
       return;
@@ -660,16 +667,16 @@ async function regenOne(job, i) {
     if (eng === 'gemini') {
       if (!job.design) job.design = { base64: fs.readFileSync(job.designFile).toString('base64'), mimeType: `image/${path.extname(job.designFile).slice(1).replace('jpg', 'jpeg')}` };
       const refImgs = (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => ({ base64: fs.readFileSync(f).toString('base64'), mimeType: `image/${path.extname(f).slice(1).replace('jpg', 'jpeg')}` }));
-      await runGemini(job, refImgs, { product: job.product, model: job.model, color: job.color, note: job.note }, i, o.regenNote);
+      await runGemini(job, refImgs, { product: job.product, model: job.model, color: job.color, note: job.note, ratio }, i, o.regenNote);
       if (o.status === 'error' || (o.error && o.error.startsWith('Tạo lại chưa được'))) throw new Error(o.error.replace(/^Tạo lại chưa được: /, ''));
       o.regen = null; saveJobFile(job); update();
       return;
     }
-    const r = await runner.workTask({ ...runnerPaths(), key: `${job.id}-r${i}`, url: job.convUrl, message: P.regenMessage(i + 1, o.regenNote), images: [], expect: 1 }, jlog(job));
+    const r = await runner.workTask({ ...runnerPaths(), key: `${job.id}-r${i}`, url: job.convUrl, message: P.regenMessage(i + 1, o.regenNote, ratio), images: [], expect: 1 }, jlog(job));
     applyInfo(o, P.parseLines(r.reply).slice(-1)[0]);
     if (!r.files.length) throw new Error('ChatGPT không tạo lại được.');
     r.files.slice(0, -1).forEach((f) => { try { fs.unlinkSync(f); } catch {} });
-    saveOption(job, i, r.files[r.files.length - 1]);
+    saveOption(job, i, r.files[r.files.length - 1], ratio);
   } catch (e) {
     o.status = o.file ? 'done' : 'error'; // tạo lại lỗi thì vẫn giữ ảnh cũ
     o.error = 'Tạo lại chưa được: ' + (e.message || String(e));

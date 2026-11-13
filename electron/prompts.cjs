@@ -52,11 +52,14 @@ const findProduct = (name) => [...PRODUCTS.flatMap((g) => g.items), ...CUSTOM].f
   || PRODUCTS[0].items.find((p) => p.name === DEFAULT_PRODUCT);
 const specLine = (p, end = '') => (p.spec ? `Product spec (custom product — follow exactly): ${String(p.spec).replace(/\s+/g, ' ').trim().replace(/[.!;,\s]+$/, '')}${end}` : '');
 
+// Tỉ lệ ảnh: câu mô tả khung hình gửi cho AI (app vẫn cắt giữa đúng tỉ lệ khi lưu).
+const ratioText = (r) => (r === '4:5' ? 'vertical 4:5 portrait (width:height = 4:5)' : 'square 1:1');
+
 // Người mẫu cho đồ mặc: [giá trị gửi skill, nhãn trên app].
 const MODELS = [['woman', 'Nữ'], ['man', 'Nam'], ['couple', 'Cặp đôi'], ['auto', 'AI chọn']];
 
 /** Tin nhắn chạy skill: chỉ tham số, phần còn lại skill lo. */
-function skillMessage({ product, model, color, note }) {
+function skillMessage({ product, model, color, note, ratio }) {
   const p = findProduct(product);
   return [
     `Create ${NUM_OPTIONS} options for the attached design.`,
@@ -64,6 +67,7 @@ function skillMessage({ product, model, color, note }) {
     specLine(p, '.'),
     p.wear ? `Model: ${model || 'woman'}.` : '',
     p.cc ? `Shirt color: ${color || 'choose per option'}.` : '',
+    `Ratio: ${ratio === '4:5' ? '4:5' : '1:1'}.`,
     note ? `Note: ${note}` : '',
   ].filter(Boolean).join(' ');
 }
@@ -135,7 +139,7 @@ Return JSON only (it is validated against a schema):
  * kind 'redesign' = giữ art + chữ của design đính kèm; 'scale' = thiết kế mới theo brief.
  */
 const BRIEF_FILE = 'comfort-brief.md';
-function briefFile({ product, model, color, note, designs, kind = 'scale', refCount = 0, imgNote = '' }) {
+function briefFile({ product, model, color, note, designs, kind = 'scale', refCount = 0, imgNote = '', ratio = '1:1' }) {
   const p = findProduct(product);
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   return [
@@ -145,6 +149,7 @@ function briefFile({ product, model, color, note, designs, kind = 'scale', refCo
     `Product: ${p.name}`,
     specLine(p),
     p.wear ? `Model: ${model || 'woman'}` : '',
+    `Ratio: ${ratio === '4:5' ? '4:5' : '1:1'} — every image ${ratioText(ratio)}`,
     note ? `Note: ${clean(note)}` : '',
     '',
     ...attachedImagesSection(refCount, imgNote),
@@ -202,12 +207,12 @@ function productHint(name) {
 }
 
 /** Prompt Gemini cho 1 mockup (1 hướng). kind 'redesign' = giữ art + chữ design gốc; 'scale' = thiết kế mới theo brief. */
-function geminiPrompt({ product, model, color, note, design, kind = 'redesign', refCount = 0, imgNote = '', regenNote = '' }) {
+function geminiPrompt({ product, model, color, note, design, kind = 'redesign', refCount = 0, imgNote = '', regenNote = '', ratio = '1:1' }) {
   const p = findProduct(product);
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const hint = productHint(p.name);
   return [
-    'Create ONE square 1:1 photorealistic e-commerce product mockup photo (real photography, soft natural light, slight depth of field). Output only the image.',
+    `Create ONE ${ratioText(ratio)} photorealistic e-commerce product mockup photo (real photography, soft natural light, slight depth of field). Output only the image.`,
     `Product: ${p.name}.${hint ? ` ${hint}` : ''}${p.spec ? ` ${specLine(p, '.')}` : ''}`,
     p.wear ? `Model: ${MODEL_EN[model] || MODEL_EN.woman}. Adults only. The top edge of the frame cuts at the chin / jawline — mouth, nose and eyes must NOT be visible (back views: top edge at the nape).` : 'No people (hands at most); the product is the hero of a lifestyle scene.',
     kind === 'redesign'
@@ -222,8 +227,8 @@ function geminiPrompt({ product, model, color, note, design, kind = 'redesign', 
   ].filter(Boolean).join(' '); // 1 dòng: xuống dòng trong ô soạn Gemini có thể bị hiểu là gửi
 }
 
-function regenMessage(n, note) {
-  return `Regenerate #${n}${note ? `. Note: ${note.replace(/\s+[—–]\s+/g, ', ').replace(/\s+/g, ' ').trim()}` : ''}`;
+function regenMessage(n, note, ratio = '1:1') {
+  return `Regenerate #${n}. Ratio: ${ratio === '4:5' ? '4:5' : '1:1'}${note ? `. Note: ${note.replace(/\s+[—–]\s+/g, ', ').replace(/\s+/g, ' ').trim()}` : ''}`;
 }
 
 /**

@@ -10,7 +10,7 @@ Turn the design into 5 redesign options made for that product and deliver 5 squa
 Never ask clarifying questions — use the defaults below and finish the whole task in one go.
 
 Modes:
-- **BRIEF FILE (most common)** — a file `comfort-brief.md` is attached next to the design image (the message may be empty, only the skill call). Read that file FIRST: it starts with `# COMFORT BRIEF` and gives `Mode:` (REDESIGN or SCALE), `Images:` N, `Product:`, `Model:`, `Note:` and N designs as `## #N <name>` + `Shirt color:` line + brief text. Follow section **BRIEF MODE** at the end with exactly those N designs, in that order. Never treat the .md file as a design image. If the brief has `## Attached images`, the FIRST attached image is the original design and the other images are references from the staff — use them exactly as its staff note says (font, colors, layout, front print…), never render them as one of the designs.
+- **BRIEF FILE (most common)** — a file `comfort-brief.md` is attached next to the design image (the message may be empty, only the skill call). Read that file FIRST: it starts with `# COMFORT BRIEF` and gives `Mode:` (REDESIGN or SCALE), `Images:` N, `Product:`, `Model:`, `Note:` `Ratio:` and N designs as `## #N <name>` + `Shirt color:` line + brief text. Follow section **BRIEF MODE** at the end with exactly those N designs, in that order. Never treat the .md file as a design image. If the brief has `## Attached images`, the FIRST attached image is the original design and the other images are references from the staff — use them exactly as its staff note says (font, colors, layout, front print…), never render them as one of the designs.
 - **REDESIGN** (default) — message starts with `Create 5 options` (or no brief file and no instructions) → Steps 1–4 below.
 - **REDESIGN FROM BRIEFS** — message starts with `Render N redesign options from these briefs` → the analysis and planning (Steps 1–2) are already done: skip them, follow section **BRIEF MODE** at the end, and KEEP the attached artwork and all its text exactly.
 - **SCALE** — message starts with `Render N scale designs from these briefs` → follow the section **SCALE MODE** at the end (render the given briefs). It uses the same Inputs, PRODUCTS and image rules.
@@ -20,6 +20,7 @@ Modes:
 - `Model: <woman | man | couple | auto>` — who wears the product (wearable products only). Default: `woman`.
   `couple` = an adult woman and an adult man wearing matching items. `auto` = pick the adult model(s) that sell this product best.
 - `Shirt color: <name>` — Comfort Colors color for products marked [CC]. Missing → choose per option.
+- `Ratio: <1:1 | 4:5>` — image aspect ratio. `1:1` = square; `4:5` = vertical portrait (width:height = 4:5). Default: `1:1`.
 - `Note: <text>` — extra request from the shop owner; follow it.
 
 ## Step 1 — Analyze (do not print)
@@ -35,7 +36,7 @@ For each direction:
 
 ## Step 3 — Generate 5 images (one per direction)
 Make 5 separate images strictly ONE AT A TIME, in order 1 → 5 (never generate them in parallel), so image N is direction N. Exactly ONE image per direction — no extra variants or second attempts of an image that already succeeded. Use the attached design as the visual reference for every image. Every image:
-- ONE square 1:1 photorealistic e-commerce mockup photo, real photography, soft natural light, slight depth of field.
+- ONE photorealistic e-commerce mockup photo in the requested `Ratio` (default square 1:1; `4:5` = vertical portrait), keep the product and print fully inside the frame, real photography, soft natural light, slight depth of field.
 - The product and print exactly as specified for the chosen product below.
 - Prints look real for the method (DTG/screen print, sublimation, knit, woven, ceramic, acrylic…), following folds, curves and light. No watermark, no extra logos, no labels or text outside the design.
 
@@ -98,7 +99,7 @@ After all images are created, reply with exactly 5 lines and nothing else — li
 If an option still failed, write `N. FAILED — <short reason>` on its line.
 
 ## Follow-up: regenerate one option
-If the user later writes `Regenerate #N` (optionally with a note), create ONE new image for direction N (same product, same direction, fresh variation, same rules) and reply with one line: `N. <direction name> — <product/shirt color> — <one-line style summary>`.
+If the user later writes `Regenerate #N` (optionally with `Ratio:` and a note), create ONE new image for direction N (same product, same direction, fresh variation, same rules, in the given Ratio — it may differ from the first images) and reply with one line: `N. <direction name> — <product/shirt color> — <one-line style summary>`.
 
 ## SCALE MODE / BRIEF MODE (render from briefs)
 The analysis and design planning were already done. The briefs come from the attached `comfort-brief.md` (`Mode: REDESIGN` = same artwork and text, new layout and style; `Mode: SCALE` = new designs), or from a message starting with `Render N scale designs from these briefs` / `Render N redesign options from these briefs` with one brief per design: `#N <name> | Shirt color: <color> | <brief>`.

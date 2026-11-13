@@ -166,12 +166,20 @@ function refreshButtons() {
 }
 
 // mode: 'redesign' = 5 hướng redesign · 'scale' = research các sàn + 4 mẫu scale + báo cáo.
+// Tỉ lệ ảnh của job mới (giữ lựa chọn giữa các job).
+let ratio = '1:1';
+$('ratioSeg').onclick = (e) => {
+  const b = e.target.closest('[data-ratio]'); if (!b) return;
+  ratio = b.dataset.ratio;
+  for (const x of $('ratioSeg').children) x.classList.toggle('on', x === b);
+};
+
 async function startJob(mode) {
   $('err').textContent = '';
   try {
     const p = product();
     const { url, ...main } = design;
-    await window.api.start({ ...main, refs: images.slice(1).map(({ url: _u, ...r }) => r), imgNote: $('imgNote').value.trim(), mode, designCode: $('designCode').value.trim(), product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
+    await window.api.start({ ...main, refs: images.slice(1).map(({ url: _u, ...r }) => r), imgNote: $('imgNote').value.trim(), ratio, mode, designCode: $('designCode').value.trim(), product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
     resetForm(); // như Design Template: tạo job xong thì form trống để tạo job mới hoàn toàn
     render();
   } catch (e) { $('err').textContent = e.message || String(e); }
@@ -242,7 +250,7 @@ function renderAnalysis(j) {
   const p = products.find((x) => x.name === j.product);
   $('anBody').innerHTML = `
     <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale' : 'Redesign 5 hướng'} · <b>Tạo ảnh bằng:</b>${j.engine === 'gemini' ? 'Gemini' : 'ChatGPT'}</p>
-    <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''}</p>
+    <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''} · <b>Tỉ lệ:</b>${esc(j.ratio || '1:1')}</p>
     ${p?.cc ? `<p class="an-row"><b>Màu áo:</b>${esc(j.color || 'AI tự chọn theo từng hướng')}</p>` : ''}
     ${j.note ? `<p class="an-row"><b>Ghi chú:</b>${esc(j.note)}</p>` : ''}
     ${j.refUrls?.length ? `<div class="an-row"><b>Ảnh tham khảo:</b><div class="refs">${j.refUrls.map((u) => `<img src="${esc(u)}" alt="" data-big="${esc(u)}">`).join('')}</div></div>` : ''}
@@ -297,6 +305,7 @@ function renderReport(j) {
 
 // Mô tả tạo lại đang gõ, theo job + mẫu (giữ nguyên khi trang tự làm mới).
 const regenNotes = {};
+const regenRatios = {}; // tỉ lệ chọn cho lần Tạo lại, theo job + mẫu
 const noteKey = (i) => `${job.id}:${i}`;
 
 // Nhãn rủi ro TM/IP (bước phân tích chấm cho từng hướng): Thấp / Trung bình / Cao + lý do.
@@ -313,14 +322,17 @@ function renderOption(o, i) {
     ? `<img src="${esc(o.url)}" alt="" data-big="${esc(o.url)}">${regenning ? `<div class="regen-over">${o.regen === 'run' ? 'Đang tạo lại…' : 'Chờ tạo lại…'}</div>` : ''}`
     : `<div class="msg">${o.status === 'run' ? 'Đang làm…' : o.status === 'wait' ? 'Đang xếp hàng…' : 'Chưa có ảnh'}</div>`;
   const canRegen = !regenning && o.status !== 'run' && !job.running && (!!job.convUrl || !!job.designs?.length);
+  const cur = o.ratio || job.ratio || '1:1';
+  const rr = regenRatios[noteKey(i)] || cur;
   return `<div class="card opt">
     <div class="top"><b title="${esc(o.name)}">${i + 1} · ${esc(o.name)}</b><span class="${cls}">${label}</span></div>
-    <div class="shot ${o.status === 'run' || regenning ? 'run' : ''} ${regenning && o.url ? 'dim' : ''}">${shot}</div>
+    <div class="shot ${o.status === 'run' || regenning ? 'run' : ''} ${regenning && o.url ? 'dim' : ''}" style="aspect-ratio:${cur === '4:5' ? '4 / 5' : '1'}">${shot}</div>
     <div class="meta"><i class="sw" style="${swatch(o.shirt_color)}"></i>${esc(o.shirt_color || '—')}${o.summary ? ` · ${esc(o.summary)}` : ''}</div>
     ${riskBadge(o.ipRisk, o.ipReason)}
     ${o.error ? `<div class="oerr">${esc(o.error)}</div>` : ''}
     <textarea class="regen-note" data-note="${i}" rows="2" placeholder="${job.mode === 'scale' ? 'Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi câu chữ cho nghề y tá, áo màu Sage…' : 'Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi áo màu Sage, chữ to hơn, nền ngoài trời…'}" ${canRegen ? '' : 'disabled'}></textarea>
     <div class="row">
+      <select class="ratio-sel" data-ratio-opt="${i}" title="Tỉ lệ ảnh khi tạo lại" ${canRegen ? '' : 'disabled'}>${['1:1', '4:5'].map((r) => `<option value="${r}" ${r === rr ? 'selected' : ''}>${r}</option>`).join('')}</select>
       <button class="btn sm pri" data-regen="${i}" ${canRegen ? '' : 'disabled'}>↻ Tạo lại</button>
       <button class="btn sm" data-file="${i}" ${o.file ? '' : 'disabled'}>Hiện file</button>
     </div>
@@ -348,6 +360,10 @@ function renderGrid() {
 $('grid').addEventListener('input', (e) => {
   const t = e.target.closest('[data-note]');
   if (t) regenNotes[noteKey(Number(t.dataset.note))] = t.value;
+});
+$('grid').addEventListener('change', (e) => {
+  const s = e.target.closest('[data-ratio-opt]');
+  if (s) { regenRatios[noteKey(Number(s.dataset.ratioOpt))] = s.value; renderGrid(); }
 });
 
 // ------------------------------- Hàng đợi job (giống Design Template) -------
@@ -612,7 +628,7 @@ $('btnCloseJob').onclick = () => $('dlgJob').close();
 $('grid').onclick = (e) => {
   const t = e.target;
   if (t.dataset.big) { $('bigImg').src = t.dataset.big; $('dlgImg').showModal(); }
-  else if (t.dataset.regen) { const i = Number(t.dataset.regen); window.api.regen(job.id, i, regenNotes[noteKey(i)] || ''); }
+  else if (t.dataset.regen) { const i = Number(t.dataset.regen); window.api.regen(job.id, i, regenNotes[noteKey(i)] || '', regenRatios[noteKey(i)] || job.options[i].ratio || job.ratio || '1:1'); }
   else if (t.dataset.file) window.api.openFile(job.options[Number(t.dataset.file)].file);
 };
 $('btnCloseImg').onclick = () => $('dlgImg').close();
