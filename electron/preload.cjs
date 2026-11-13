@@ -44,6 +44,10 @@ contextBridge.exposeInMainWorld('api', {
   update: { get: () => ipcRenderer.invoke('update:get'), install: () => ipcRenderer.invoke('update:install'), onStatus: on('update:status') },
   version: () => ipcRenderer.invoke('app:version'),
   account: { get: () => ipcRenderer.invoke('account:get'), refresh: () => ipcRenderer.invoke('account:refresh') },
+  profile: {
+    get: () => ipcRenderer.invoke('profile:get'), setName: (n) => ipcRenderer.invoke('profile:setName', n),
+    pickAvatar: () => ipcRenderer.invoke('profile:pickAvatar'), clearAvatar: () => ipcRenderer.invoke('profile:clearAvatar'),
+  },
   onJobs: on('jobs:update'),
   onLog: on('log'),
 });

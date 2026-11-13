@@ -442,11 +442,40 @@ function renderChart() {
   x.innerHTML = days.map((d, k) => `<span class="${k === last ? 'today' : ''}">${k === last ? 'Hôm nay' : esc(d.d)}</span>`).join('');
   $('chartSum').textContent = `${dash?.stats?.images7 ?? 0} ảnh · ${dash?.stats?.jobs7 ?? 0} job`;
 }
+// Hồ sơ: tên hiển thị + ảnh đại diện (người dùng tự đặt); chưa đặt thì lấy chữ cái đầu tên / email.
+let prof = { name: '', avatarUrl: '' };
+const userEmail = () => dash?.chatgpt?.email || dash?.claude?.email || '';
+const initial = () => ((prof.name || userEmail() || '?').trim()[0] || '?').toUpperCase();
+const avatarHtml = () => (prof.avatarUrl ? `<img src="${esc(prof.avatarUrl)}" alt="">` : esc(initial()));
 function renderAvatar() {
-  const email = dash?.chatgpt?.email || dash?.claude?.email || '';
-  $('avatar').textContent = (email[0] || '?').toUpperCase();
-  $('avatar').title = email ? `Tài khoản: ${email}` : 'Tài khoản';
+  $('avatar').innerHTML = avatarHtml();
+  $('userName').textContent = prof.name || '';
+  $('userName').hidden = !prof.name;
+  $('avatar').title = [prof.name, userEmail()].filter(Boolean).join(' · ') || 'Hồ sơ';
 }
+window.api.profile.get().then((p) => { prof = p; renderAvatar(); }).catch(() => {});
+
+function renderProfileDlg() {
+  $('pfAvatar').innerHTML = prof.avatarUrl ? `<img src="${esc(prof.avatarUrl)}" alt="">` : esc((($('pfName').value || userEmail() || '?').trim()[0] || '?').toUpperCase());
+  $('btnPfClear').disabled = !prof.avatarUrl;
+  $('pfEmail').textContent = userEmail() ? `Tài khoản: ${userEmail()}` : '';
+}
+function openProfile() {
+  $('pfName').value = prof.name; $('pfErr').textContent = '';
+  renderProfileDlg();
+  $('dlgProfile').showModal();
+  $('pfName').focus();
+}
+$('pfName').oninput = () => { if (!prof.avatarUrl) renderProfileDlg(); };
+$('btnPfPick').onclick = async () => {
+  $('pfErr').textContent = '';
+  try { prof = await window.api.profile.pickAvatar(); } catch (e) { $('pfErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, ''); }
+  renderProfileDlg(); renderAvatar();
+};
+$('btnPfClear').onclick = async () => { prof = await window.api.profile.clearAvatar(); renderProfileDlg(); renderAvatar(); };
+$('btnPfSave').onclick = async () => { prof = await window.api.profile.setName($('pfName').value); renderAvatar(); $('dlgProfile').close(); };
+$('btnPfCancel').onclick = () => $('dlgProfile').close();
+$('btnPfAccount').onclick = () => { $('dlgProfile').close(); $('btnSettings').click(); };
 
 // Menu bên trái: đổi màn (Bảng điều khiển / Hàng đợi) hoặc mở hộp thoại.
 const VIEW_TITLE = { dash: 'Bảng điều khiển', queue: 'Hàng đợi job' };
@@ -459,7 +488,7 @@ $('nav').onclick = (e) => {
   } else if (b.dataset.nav === 'account') $('btnSettings').click();
   else if (b.dataset.nav === 'setup') openSetup();
 };
-$('avatar').onclick = () => $('btnSettings').click();
+$('avatar').onclick = () => openProfile();
 
 function openDetail(id) { selId = id; $('dlgJob').showModal(); renderDetail(); }
 

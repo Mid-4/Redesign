@@ -490,6 +490,29 @@ ipcMain.handle('account:refresh', async () => {
   return { ...account, stats: usageStats() };
 });
 
+// ------------------------------- Hồ sơ người dùng (avatar góc phải) -----------------
+// Tên hiển thị lưu trong settings; ảnh đại diện cắt vuông giữa, thu về 256px, lưu <userData>/avatar.png.
+const avatarFile = () => path.join(app.getPath('userData'), 'avatar.png');
+function profile() {
+  const st = getSettings();
+  const has = fs.existsSync(avatarFile());
+  return { name: st.profileName || '', avatarUrl: has ? `${pathToFileURL(avatarFile()).href}?t=${st.avatarAt || 0}` : '' };
+}
+ipcMain.handle('profile:get', () => profile());
+ipcMain.handle('profile:setName', (_e, name) => { setSettings({ profileName: String(name || '').trim().slice(0, 40) }); return profile(); });
+ipcMain.handle('profile:pickAvatar', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Chọn ảnh đại diện', properties: ['openFile'], filters: [{ name: 'Ảnh PNG / JPG', extensions: ['png', 'jpg', 'jpeg'] }] });
+  if (r.canceled || !r.filePaths[0]) return profile();
+  const img = nativeImage.createFromPath(r.filePaths[0]);
+  if (img.isEmpty()) throw new Error('Không đọc được ảnh này — chọn ảnh PNG hoặc JPG.');
+  const { width: w, height: h } = img.getSize(), s = Math.min(w, h);
+  const sq = img.crop({ x: Math.floor((w - s) / 2), y: Math.floor((h - s) / 2), width: s, height: s }).resize({ width: 256, height: 256, quality: 'best' });
+  fs.writeFileSync(avatarFile(), sq.toPNG());
+  setSettings({ avatarAt: Date.now() });
+  return profile();
+});
+ipcMain.handle('profile:clearAvatar', () => { try { fs.unlinkSync(avatarFile()); } catch {} return profile(); });
+
 ipcMain.handle('setup:installSkill', async () => { await autoInstallSkill(); return setupStatus(); });
 ipcMain.handle('setup:showSkillFile', () => shell.showItemInFolder(skillZip()));
 ipcMain.handle('setup:confirmOutDir', (_e, dir) => { setSettings({ outDir: dir || getSettings().outDir, outDirChosen: true }); return setupStatus(); });
