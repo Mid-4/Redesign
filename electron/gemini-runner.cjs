@@ -466,15 +466,26 @@ async function generateOnce({ prompt, images, downloadDir, model }, log) {
     const appeared = await page.waitForFunction(
       (before) => {
         const set = new Set(before);
-        return [...document.querySelectorAll('img')].some((i) => {
+        const img = [...document.querySelectorAll('img')].some((i) => {
           const r = i.getBoundingClientRect();
           const s = i.currentSrc || i.src;
           return r.width > 220 && r.height > 220 && s && !set.has(s);
         });
+        if (img) return 'image';
+        // Câu trả lời cuối của Gemini báo hết lượt / chạm giới hạn tạo ảnh
+        const rs = document.querySelectorAll('model-response, message-content');
+        const t = rs.length ? (rs[rs.length - 1].innerText || '').trim() : '';
+        if (t && /(limit|quota|giới hạn|hết lượt|đạt mức|try again (later|tomorrow)|thử lại sau)/i.test(t)) return 'limit:' + t.slice(0, 300);
+        return false;
       },
       beforeSrcs,
       { timeout: RESULT_TIMEOUT_MS, polling: 2000 }
-    ).catch(() => null);
+    ).then((h) => h.jsonValue()).catch(() => null);
+    if (typeof appeared === 'string' && appeared.startsWith('limit:')) {
+      const e = new Error(`Gemini báo hết lượt tạo ảnh: ${appeared.slice(6).replace(/\s+/g, ' ')}`);
+      e.code = 'GEMINI_LIMIT';
+      throw e;
+    }
     if (!appeared) throw new Error('Hết thời gian chờ ảnh kết quả từ Gemini.');
     await page.waitForTimeout(4000); // chờ Gemini hoàn tất (ảnh loading -> ảnh cuối)
 
@@ -620,12 +631,55 @@ function prepare(payload, log = noop) {
     }
 
     const email = confirmedSince ? await accountEmail() : '';
+    const expires = confirmedSince ? await sessionExpires() : '';
     if (confirmedSince) { log('✅ Xác nhận đăng nhập Gemini — đóng cửa sổ, từ giờ chạy NGẦM.'); await close(); }
     else log('Hết thời gian chờ đăng nhập — giữ cửa sổ mở để bạn tiếp tục.');
-    return { loggedIn: !!confirmedSince, email };
+    return { loggedIn: !!confirmedSince, email, expires };
   });
   queue = run.catch(() => []);
   return run;
+}
+
+/** Hạn phiên đăng nhập Google (hạn cookie đăng nhập __Secure-1PSID / SID) -> ISO, '' nếu không đọc được. */
+async function sessionExpires() {
+  try {
+    const cs = await context.cookies('https://gemini.google.com');
+    const c = cs.find((x) => x.name === '__Secure-1PSID') || cs.find((x) => x.name === 'SID');
+    return c && c.expires > 0 ? new Date(c.expires * 1000).toISOString() : '';
+  } catch { return ''; }
+}
+
+/**
+ * Hạn mức Gemini: đọc trang gemini.google.com/usage ("Hạn mức sử dụng" trong menu Cài đặt của Gemini).
+ * Trang hiện: gói (PRO…), "Mức sử dụng hiện tại" (Đã sử dụng X% · Đặt lại lúc …) và "Hạn mức hằng tuần".
+ * Đọc theo chữ hiển thị (tiếng Việt / tiếng Anh); không đọc được thì trả null.
+ */
+async function readUsage(log = noop) {
+  try {
+    await page.goto(GEMINI_URL.replace(/\/app.*$/, '/usage'), { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForFunction(() => /(Đã sử dụng|used)\s*\d+\s*%|\d+\s*%\s*used/i.test((document.querySelector('main') || document.body).innerText), null, { timeout: 25000, polling: 1000 });
+    const u = await page.evaluate(() => {
+      const lines = (document.querySelector('main') || document.body).innerText.split('\n').map((x) => x.trim()).filter(Boolean);
+      const used = [], reset = [];
+      for (const l of lines) {
+        const m = /(?:Đã sử dụng|used)\s*(\d+)\s*%|(\d+)\s*%\s*used/i.exec(l);
+        if (m) used.push(Number(m[1] ?? m[2]));
+        if (/^(Đặt lại|Resets?)\b/i.test(l)) reset.push(l.replace(/^(Đặt lại|Resets?)\s*(lúc|vào|at|on|in)?\s*/i, ''));
+      }
+      const plan = lines.find((l) => /^(PRO|ULTRA|PLUS|FREE|MIỄN PHÍ)$/i.test(l)) || '';
+      return { plan, used, reset };
+    });
+    if (!u.used.length) return null;
+    return {
+      plan: u.plan,
+      current: { used: u.used[0], reset: u.reset[0] || '' },
+      week: u.used.length > 1 ? { used: u.used[1], reset: u.reset[1] || '' } : null,
+      at: new Date().toISOString(),
+    };
+  } catch (e) {
+    log(`⚠️ Chưa đọc được hạn mức Gemini: ${e.message || e}`);
+    return null;
+  }
 }
 
 /** Email tài khoản Google đang đăng nhập (nút avatar: aria-label "Google Account: Tên (email)"). */
@@ -649,7 +703,9 @@ function checkLogin(payload, log = noop) {
       await page.goto(GEMINI_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
       let ok = false;
       for (const end = Date.now() + 20000; Date.now() < end && !ok;) { ok = await isLoggedIn(); if (!ok) await page.waitForTimeout(1500); }
-      return { loggedIn: ok, email: ok ? await accountEmail() : '' };
+      if (!ok) return { loggedIn: false, email: '', expires: '' };
+      const email = await accountEmail(), expires = await sessionExpires();
+      return { loggedIn: true, email, expires, usage: await readUsage(log) };
     } finally { scheduleCloseTimer(log); }
   });
   queue = run.catch(() => {});

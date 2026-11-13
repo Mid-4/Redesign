@@ -662,8 +662,14 @@ function meter(label, w) {
   const cls = w.used >= 90 ? 'bad' : w.used >= 70 ? 'warn' : '';
   return `<div class="meter"><span>${label}</span><i><b class="${cls}" style="width:${Math.min(100, w.used)}%"></b></i><span>còn ${Math.max(0, 100 - w.used)}% · reset ${esc(fmtTime(w.resetsAt))}</span></div>`;
 }
+// Thanh hạn mức Gemini: giờ reset là chữ Gemini hiển thị (VD "21:24", "17 thg 11 lúc 10:24").
+function gmeter(label, w) {
+  if (!w) return '';
+  const cls = w.used >= 90 ? 'bad' : w.used >= 70 ? 'warn' : '';
+  return `<div class="meter"><span>${label}</span><i><b class="${cls}" style="width:${Math.min(100, w.used)}%"></b></i><span>còn ${Math.max(0, 100 - w.used)}%${w.reset ? ` · reset ${esc(w.reset)}` : ''}</span></div>`;
+}
 function renderAccount(a) {
-  const g = a?.chatgpt || {}, c = a?.claude || {}, st = a?.stats || {}, u = c.usage;
+  const g = a?.chatgpt || {}, c = a?.claude || {}, st = a?.stats || {}, u = c.usage, gm = a?.gemini || {};
   const st0 = SETUP.st || {}, eng = engine();
   const useBtn = (id) => (eng === id ? '<span class="chip ok">Đang dùng</span>' : `<button class="btn sm pri" data-use="${id}">Dùng</button>`);
   $('acctBox').innerHTML = `
@@ -680,8 +686,12 @@ function renderAccount(a) {
     </div>
     <div class="acct-card ${eng === 'gemini' ? 'using' : ''}">
       <div class="ah"><b>Gemini</b>${useBtn('gemini')}</div>
+      ${st0.geminiOk && gm.usage?.plan ? `<div class="ah"><span></span><span class="chip ok">${esc(planName(gm.usage.plan))}</span></div>` : ''}
       ${st0.geminiOk ? `<div class="ar"><b>${esc(st0.geminiEmail || 'Đã đăng nhập')}</b></div>` : '<div class="ar">Chưa đăng nhập tài khoản Google (gemini.google.com).</div>'}
-      <div class="ar">Tạo mockup bằng Gemini web (Nano Banana) — mỗi mẫu 1 lượt, chạy lần lượt.</div>
+      ${st0.geminiOk ? `${gm.expires ? `<div class="ar">Phiên đăng nhập hết hạn: ${esc(fmtTime(gm.expires))}${gm.checkedAt ? ` · kiểm tra ${esc(ago(gm.checkedAt))}` : ''}</div>` : ''}
+      ${gm.usage ? gmeter('Hiện tại', gm.usage.current) + gmeter('Tuần', gm.usage.week) + `<div class="ar">Mức dùng cập nhật ${esc(ago(gm.usage.at))}</div>`
+        : '<div class="ar">Chưa đọc được hạn mức — bấm Làm mới.</div>'}
+      ${gm.limit ? `<div class="ar err">⚠️ Đã chạm giới hạn Gemini lúc ${esc(fmtTime(gm.limit.at))} — đổi sang ChatGPT hoặc chờ Gemini reset.</div>` : ''}` : ''}
       <div class="row-btns"><button class="btn sm" data-gem="login">${st0.geminiOk ? 'Đăng nhập tài khoản khác' : 'Đăng nhập Gemini'}</button>${st0.geminiOk ? '<button class="btn sm" data-gem="check">Kiểm tra</button>' : ''}</div>
       <div class="ar" id="gemMsg"></div>
     </div>

@@ -161,7 +161,7 @@ function saveRatio(srcPath, outPath, ratio, log) {
 // Tên file: có mã design -> "<mã>-<số thứ tự>.png" (tạo lại: "<mã>-<số>_v2.png", file cũ giữ nguyên);
 // job cũ chưa có mã -> như trước "option-N-<tên hướng>.png".
 const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, '-').replace(/\s+/g, ' ').replace(/^[ .-]+|[ .-]+$/g, '').slice(0, 60);
-function saveOption(job, i, src, ratio = job.ratio) {
+function saveOption(job, i, src, ratio = job.ratio, engine = 'chatgpt') {
   const o = job.options[i];
   const code = safeName(job.designCode);
   let n = 1, out;
@@ -172,6 +172,7 @@ function saveOption(job, i, src, ratio = job.ratio) {
   saveRatio(src, out, ratio, jlog(job));
   try { fs.unlinkSync(src); } catch {}
   o.ratio = normRatio(ratio);
+  o.engine = engine; // đếm mức dùng theo tài khoản (⚙ Tài khoản & mức dùng)
   o.file = out; o.t = Date.now(); o.status = 'done'; o.error = null;
 }
 
@@ -360,7 +361,8 @@ async function runGemini(job, refImgs, msgArgs, only = null, regenNote = '') {
       const prompt = P.geminiPrompt({ ...msgArgs, design: designs[i], kind, refCount: refImgs.length, imgNote: job.imgNote, regenNote });
       jlog(job)(`Gemini: tạo mẫu ${i + 1}/${job.options.length}…`);
       const r = await gemini.generate({ ...geminiPaths(), prompt, images: [job.design, ...refImgs], model: getSettings().geminiModel || '' }, jlog(job));
-      saveOption(job, i, r.path, msgArgs.ratio);
+      saveOption(job, i, r.path, msgArgs.ratio, 'gemini');
+      if (getSettings().geminiLimit) setSettings({ geminiLimit: null }); // tạo được ảnh -> hết cảnh báo hết lượt
       ok++; job.imgCount = (job.imgCount || 0) + 1;
     } catch (e) {
       lastErr = e;
@@ -368,9 +370,11 @@ async function runGemini(job, refImgs, msgArgs, only = null, regenNote = '') {
       o.error = (only != null ? 'Tạo lại chưa được: ' : '') + (e.message || String(e));
       jlog(job)(`❌ Gemini mẫu ${i + 1}: ${e.message || e}`);
       if (/^Gemini chưa đăng nhập/i.test(e.message || '')) throw e; // chưa đăng nhập: dừng luôn
+      if (e.code === 'GEMINI_LIMIT') { setSettings({ geminiLimit: { at: new Date().toISOString(), msg: e.message } }); throw e; } // hết lượt: dừng luôn
     }
     applyDesigns(job); saveJobFile(job); update();
   }
+  refreshGeminiUsage();
   if (only == null) {
     if (!ok && lastErr) throw lastErr;
     job.stage = 'done';
@@ -388,13 +392,13 @@ ipcMain.handle('settings:pickDir', async () => {
 // ------------------------------- Gemini + chọn engine tạo ảnh -----------------------
 ipcMain.handle('gemini:login', async () => {
   const r = await gemini.prepare({ ...geminiPaths() }, log);
-  if (r?.loggedIn) setSettings({ geminiOk: true, geminiEmail: r.email || '' });
+  if (r?.loggedIn) setSettings({ geminiOk: true, geminiEmail: r.email || '', geminiExpires: r.expires || '', geminiCheckedAt: new Date().toISOString(), geminiLimit: null });
   setupChanged();
   return { ok: !!r?.loggedIn, email: r?.email || '' };
 });
 ipcMain.handle('gemini:check', async () => {
   const r = await gemini.checkLogin({ ...geminiPaths() }, log).catch(() => ({ loggedIn: false }));
-  setSettings({ geminiOk: !!r.loggedIn, ...(r.email ? { geminiEmail: r.email } : {}) });
+  saveGeminiCheck(r);
   return { ok: !!r.loggedIn, email: r.email || getSettings().geminiEmail || '' };
 });
 ipcMain.handle('engine:set', (_e, engine) => { setSettings({ engine: engine === 'gemini' ? 'gemini' : 'chatgpt' }); setupChanged(); return getSettings().engine; });
@@ -516,7 +520,8 @@ function usageStats() {
   } catch {}
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const t0 = today.getTime(), t7 = t0 - 6 * 86400000;
-  const s = { jobsToday: 0, jobs7: 0, imagesToday: 0, images7: 0, analysesToday: 0, analyses7: 0 };
+  const s = { jobsToday: 0, jobs7: 0, imagesToday: 0, images7: 0, analysesToday: 0, analyses7: 0, gem5h: 0, gemToday: 0, gem7: 0 };
+  const t5h = Date.now() - 5 * 3600000;
   // 7 ngày (cũ -> hôm nay) cho biểu đồ trên bảng điều khiển
   const p2 = (n) => String(n).padStart(2, '0');
   s.days = Array.from({ length: 7 }, (_, k) => { const d = new Date(t7 + k * 86400000); return { d: `${p2(d.getDate())}/${p2(d.getMonth() + 1)}`, images: 0, jobs: 0 }; });
@@ -530,6 +535,7 @@ function usageStats() {
       if (!o.file || !o.t) continue;
       if (o.t >= t0) s.imagesToday++;
       if (o.t >= t7) { s.images7++; if (s.days[dayIdx(o.t)]) s.days[dayIdx(o.t)].images++; }
+      if ((o.engine || m.engine) === 'gemini') { if (o.t >= t5h) s.gem5h++; if (o.t >= t0) s.gemToday++; if (o.t >= t7) s.gem7++; }
     }
   }
   return s;
@@ -542,24 +548,38 @@ function accountWithLive() {
     a.chatgpt = { ...(a.chatgpt || {}), usage: live };
     setSettings({ account: a });
   }
-  return { ...a, stats: usageStats() };
+  return { ...a, stats: usageStats(), gemini: geminiInfo() };
 }
+const geminiInfo = () => { const st = getSettings(); return { expires: st.geminiExpires || '', checkedAt: st.geminiCheckedAt || '', limit: st.geminiLimit || null, usage: st.geminiUsage || null }; };
+/** Lưu kết quả kiểm tra Gemini (đăng nhập, email, hạn phiên, hạn mức đọc từ gemini.google.com/usage). */
+function saveGeminiCheck(r) {
+  setSettings({
+    geminiOk: !!r?.loggedIn, ...(r?.email ? { geminiEmail: r.email } : {}), ...(r?.expires ? { geminiExpires: r.expires } : {}),
+    ...(r?.usage ? { geminiUsage: r.usage, ...(r.usage.current?.used < 100 && r.usage.week?.used !== 100 ? { geminiLimit: null } : {}) } : {}),
+    geminiCheckedAt: new Date().toISOString(),
+  });
+}
+// Sau mỗi lượt chạy Gemini: đọc lại hạn mức ngầm (không chặn job).
+const refreshGeminiUsage = () => gemini.checkLogin({ ...geminiPaths() }, () => {}).then((r) => { if (r?.loggedIn) saveGeminiCheck(r); }).catch(() => {});
 ipcMain.handle('account:get', () => accountWithLive());
 // Làm mới: ChatGPT mở ngầm 1 cửa sổ đọc phiên (~10–20s); Claude đọc trạng thái + 1 câu ngắn để lấy mức dùng (~5s).
 ipcMain.handle('account:refresh', async () => {
   const [g, c, u] = await Promise.all([
     runner.accountInfo({ ...runnerPaths(), key: 'account' }, log).then((x) => ({ ...x, ok: true }), (e) => ({ ok: false, error: e.message || String(e) })),
     claude.status().catch(() => ({})),
-    Promise.resolve(null), // mức dùng tài khoản phân tích: không hiển thị nữa (Anh4 yêu cầu ẩn)
+    getSettings().geminiOk
+      ? Promise.race([gemini.checkLogin({ ...geminiPaths() }, log), new Promise((r) => setTimeout(() => r(null), 40000))]).catch(() => null)
+      : Promise.resolve(null),
   ]);
+  if (u) saveGeminiCheck(u);
   const prev = getSettings().account || {};
   const account = {
     chatgpt: g.ok ? { ...g, usage: g.usage || prev.chatgpt?.usage || null, checkedAt: new Date().toISOString() } : { ...(prev.chatgpt || {}), error: g.error },
-    claude: { ...c, usage: u || prev.claude?.usage || null, usageAt: u ? new Date().toISOString() : prev.claude?.usageAt || '', checkedAt: new Date().toISOString() },
+    claude: { ...c, usage: prev.claude?.usage || null, usageAt: prev.claude?.usageAt || '', checkedAt: new Date().toISOString() },
   };
   setSettings({ account, ...(g.ok ? { loginOk: true } : {}), claudeOk: !!c.loggedIn, claudeEmail: c.email || '' });
   setupChanged();
-  return { ...account, stats: usageStats() };
+  return { ...account, stats: usageStats(), gemini: geminiInfo() };
 });
 
 // ------------------------------- Hồ sơ người dùng (avatar góc phải) -----------------
