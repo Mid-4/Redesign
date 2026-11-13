@@ -127,6 +127,9 @@ function stamp() {
   return `${String(d.getFullYear()).slice(2)}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
+// Tài khoản tạo ảnh ĐANG CHỌN (⚙ / nút ChatGPT|Gemini). Mỗi lần chạy (job mới, Thử lại, Tạo lại) lấy giá trị
+// lúc đó -> lỗi ở tài khoản này thì đổi sang tài khoản kia rồi chạy lại là chạy đúng tài khoản mới.
+const curEngine = () => (getSettings().engine === 'gemini' ? 'gemini' : 'chatgpt');
 const geminiPaths = () => ({
   profileDir: path.join(app.getPath('userData'), 'gemini-profile'),
   downloadDir: path.join(app.getPath('temp'), 'comfort-redesign-gemini'),
@@ -267,6 +270,7 @@ async function runAll(job, collect = false) {
   const refImgs = collect ? [] : (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => ({
     base64: fs.readFileSync(f).toString('base64'), mimeType: `image/${path.extname(f).slice(1).replace('jpg', 'jpeg')}`,
   }));
+  if (!collect) job.engine = curEngine(); // "Lấy kết quả" chỉ có ở hội thoại ChatGPT -> giữ nguyên
   job.running = true; job.cancelled = false; job.stage = 'running'; job.error = null; job.imgCount = 0;
   job.step = 'open'; job.stepAt = new Date().toISOString();
   job.options.forEach((o) => { if (o.status !== 'done') { o.status = 'run'; o.error = null; } });
@@ -624,7 +628,7 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
 ipcMain.handle('job:regen', (_e, id, i, note) => {
   const job = findJob(id);
   const o = job?.options[i];
-  if (!o || job.running || o.regen || (!job.convUrl && job.engine !== 'gemini')) return;
+  if (!o || job.running || o.regen || (!job.convUrl && !job.designs?.length)) return;
   o.regen = 'wait'; o.regenNote = String(note || '').trim(); o.error = null; update();
   job.regenChain = (job.regenChain || Promise.resolve()).then(() => regenOne(job, i)).catch(() => {});
 });
@@ -634,7 +638,26 @@ async function regenOne(job, i) {
   o.regen = 'run'; o.status = 'run'; update();
   try {
     if (o.regenNote) jlog(job)(`Tạo lại mẫu ${i + 1} với mô tả: ${o.regenNote}`);
-    if (job.engine === 'gemini') {
+    const eng = curEngine();
+    const loadRefs = () => (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => ({ base64: fs.readFileSync(f).toString('base64'), mimeType: `image/${path.extname(f).slice(1).replace('jpg', 'jpeg')}` }));
+    if (!job.design) job.design = { base64: fs.readFileSync(job.designFile).toString('base64'), mimeType: `image/${path.extname(job.designFile).slice(1).replace('jpg', 'jpeg')}` };
+    // ChatGPT nhưng không có hội thoại ChatGPT của job (job từng chạy Gemini / chưa gửi) -> hội thoại mới chỉ với brief mẫu này.
+    if (eng === 'chatgpt' && (!job.convUrl || job.engine === 'gemini') && job.designs?.length) {
+      const refImgs = loadRefs();
+      const d = pickedDesigns(job)[i];
+      const brief = P.briefFile({ product: job.product, model: job.model, color: job.color, note: [job.note, o.regenNote && `Change requested: ${o.regenNote}`].filter(Boolean).join(' · '),
+        designs: [d], kind: job.mode === 'scale' ? 'scale' : 'redesign', refCount: refImgs.length, imgNote: job.imgNote });
+      await skillReady;
+      const r = await runner.workTask({ ...runnerPaths(), key: `${job.id}-r${i}`, skill: getSettings().skillName, message: '', expect: 1,
+        images: [job.design, ...refImgs, { fileName: P.BRIEF_FILE, text: brief }] }, jlog(job));
+      if (!r.files.length) throw new Error('ChatGPT không tạo lại được.');
+      r.files.slice(0, -1).forEach((f) => { try { fs.unlinkSync(f); } catch {} });
+      saveOption(job, i, r.files[r.files.length - 1]);
+      applyDesigns(job);
+      o.regen = null; saveJobFile(job); update();
+      return;
+    }
+    if (eng === 'gemini') {
       if (!job.design) job.design = { base64: fs.readFileSync(job.designFile).toString('base64'), mimeType: `image/${path.extname(job.designFile).slice(1).replace('jpg', 'jpeg')}` };
       const refImgs = (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => ({ base64: fs.readFileSync(f).toString('base64'), mimeType: `image/${path.extname(f).slice(1).replace('jpg', 'jpeg')}` }));
       await runGemini(job, refImgs, { product: job.product, model: job.model, color: job.color, note: job.note }, i, o.regenNote);

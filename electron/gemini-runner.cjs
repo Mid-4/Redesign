@@ -44,10 +44,12 @@ const SEL = {
   ],
   // Nút mở menu đổi model (aria-label thật: "Mở công cụ chọn chế độ, hiện tại là Flash").
   modelSwitcher: ['[aria-label*="chọn chế độ" i]', '[aria-label*="choose mode" i]', 'button[aria-label*="model" i]'],
-  // Input file để upload ảnh (thường ẩn).
-  fileInput: ['input[type="file"]'],
+  // Input file để upload ảnh (thường ẩn; Gemini 11/2026 chỉ tạo input SAU khi bấm "+": ưu tiên ô nhận ảnh).
+  fileInput: ['input[type="file"][accept*="image"]', 'input[type="file"]'],
   // Nút "+" mở menu thêm tệp/ảnh.
   attachBtn: [
+    '[aria-label*="Nội dung tải lên" i]', // Gemini 11/2026: "Nội dung tải lên và công cụ"
+    '[aria-label*="Upload" i][aria-label*="tool" i]',
     'button[aria-label*="Thêm" i]',
     'button[aria-label*="tệp" i]',
     'button[aria-label*="Add files" i]',
@@ -309,6 +311,15 @@ async function attachImages(imagePaths, log) {
     throw new Error('Không bấm được nút "+" để đính kèm.');
   }
   await page.waitForTimeout(800);
+
+  // 2b) Gemini 11/2026: bấm "+" xong là có sẵn ô nhận ảnh (accept image/*) -> đưa file thẳng vào, đóng menu.
+  const imgInput = page.locator('input[type="file"][accept*="image"]').first();
+  if (await imgInput.count().catch(() => 0)) {
+    await imgInput.setInputFiles(imagePaths);
+    await page.keyboard.press('Escape').catch(() => {});
+    log(`Đã đính kèm ${imagePaths.length} ảnh.`);
+    return;
+  }
 
   // 3) Click "Tải tệp lên" -> bắt hộp chọn file (filechooser) hoặc input ẩn.
   const uploadItem = await firstVisible(page, SEL.uploadMenuItem, 5000);

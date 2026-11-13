@@ -312,7 +312,7 @@ function renderOption(o, i) {
   const shot = o.url
     ? `<img src="${esc(o.url)}" alt="" data-big="${esc(o.url)}">${regenning ? `<div class="regen-over">${o.regen === 'run' ? 'Đang tạo lại…' : 'Chờ tạo lại…'}</div>` : ''}`
     : `<div class="msg">${o.status === 'run' ? 'Đang làm…' : o.status === 'wait' ? 'Đang xếp hàng…' : 'Chưa có ảnh'}</div>`;
-  const canRegen = !regenning && o.status !== 'run' && !job.running && (!!job.convUrl || job.engine === 'gemini');
+  const canRegen = !regenning && o.status !== 'run' && !job.running && (!!job.convUrl || !!job.designs?.length);
   return `<div class="card opt">
     <div class="top"><b title="${esc(o.name)}">${i + 1} · ${esc(o.name)}</b><span class="${cls}">${label}</span></div>
     <div class="shot ${o.status === 'run' || regenning ? 'run' : ''} ${regenning && o.url ? 'dim' : ''}">${shot}</div>
