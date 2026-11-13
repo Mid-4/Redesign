@@ -299,6 +299,11 @@ function renderReport(j) {
 const regenNotes = {};
 const noteKey = (i) => `${job.id}:${i}`;
 
+// Nhãn rủi ro TM/IP (bước phân tích chấm cho từng hướng): Thấp / Trung bình / Cao + lý do.
+const RISK = { low: ['Rủi ro IP: Thấp', 'ok'], medium: ['Rủi ro IP: Trung bình', 'warn'], high: ['Rủi ro IP: Cao', 'bad'] };
+const riskBadge = (level, reason) => (RISK[level]
+  ? `<div class="risk ${RISK[level][1]}" title="${esc(reason || '')}">🛡️ ${RISK[level][0]}${reason ? ` — ${esc(reason)}` : ''}</div>` : '');
+
 function renderOption(o, i) {
   let [label, cls] = STATUS[o.status] || STATUS.wait;
   if (o.regen === 'run') [label, cls] = ['Đang tạo lại…', 'chip run'];
@@ -312,6 +317,7 @@ function renderOption(o, i) {
     <div class="top"><b title="${esc(o.name)}">${i + 1} · ${esc(o.name)}</b><span class="${cls}">${label}</span></div>
     <div class="shot ${o.status === 'run' || regenning ? 'run' : ''} ${regenning && o.url ? 'dim' : ''}">${shot}</div>
     <div class="meta"><i class="sw" style="${swatch(o.shirt_color)}"></i>${esc(o.shirt_color || '—')}${o.summary ? ` · ${esc(o.summary)}` : ''}</div>
+    ${riskBadge(o.ipRisk, o.ipReason)}
     ${o.error ? `<div class="oerr">${esc(o.error)}</div>` : ''}
     <textarea class="regen-note" data-note="${i}" rows="2" placeholder="${job.mode === 'scale' ? 'Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi câu chữ cho nghề y tá, áo màu Sage…' : 'Mô tả muốn sửa khi tạo lại (tuỳ chọn) — VD: đổi áo màu Sage, chữ to hơn, nền ngoài trời…'}" ${canRegen ? '' : 'disabled'}></textarea>
     <div class="row">
@@ -458,6 +464,7 @@ function renderPicker(j) {
       <label class="ph"><input type="checkbox" data-pick="${k}" ${sel.has(k) ? 'checked' : ''}>${k + 1} · ${esc(d.name)}</label>
       <span class="pm"><i class="sw" style="${swatch(j.color || d.shirt_color)}"></i>${esc(j.color || d.shirt_color || '')}</span>
       <p>${esc(d.summary_vi || '')}</p>
+      ${riskBadge(d.ip_risk, d.ip_reason)}
       <details><summary>Mô tả chi tiết</summary>${esc(d.brief || '')}</details>
     </div>`).join('')}</div>
     <div class="pick-foot"><button class="btn pri" id="btnPick" ${sel.size ? '' : 'disabled'}>🎨 Tạo ảnh ${sel.size} hướng đã chọn</button>

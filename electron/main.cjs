@@ -253,6 +253,7 @@ function applyDesigns(job) {
     const o = job.options[i];
     if (!o) return;
     o.name = d.name || o.name; o.summary = d.summary_vi || o.summary;
+    o.ipRisk = d.ip_risk || o.ipRisk || ''; o.ipReason = d.ip_reason || o.ipReason || '';
     o.shirt_color = job.color || d.shirt_color || o.shirt_color; // ChatGPT hay ghi kèm tên SP ("T-shirt 2 mặt Sage") -> lấy màu theo brief
   });
 }

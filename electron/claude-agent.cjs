@@ -100,8 +100,11 @@ const SCHEMA = {
     designs: {
       type: 'array', minItems: 5, maxItems: 5,
       items: {
-        type: 'object', required: ['name', 'shirt_color', 'summary_vi', 'brief'],
-        properties: { name: { type: 'string' }, shirt_color: { type: 'string' }, summary_vi: { type: 'string' }, brief: { type: 'string' } },
+        type: 'object', required: ['name', 'shirt_color', 'summary_vi', 'brief', 'ip_risk', 'ip_reason'],
+        properties: {
+          name: { type: 'string' }, shirt_color: { type: 'string' }, summary_vi: { type: 'string' }, brief: { type: 'string' },
+          ip_risk: { type: 'string', enum: ['low', 'medium', 'high'] }, ip_reason: { type: 'string' }, // nhãn rủi ro TM/IP
+        },
       },
     },
   },
