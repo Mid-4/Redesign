@@ -427,7 +427,7 @@ ipcMain.handle('setup:claudeCode', (_e, code) => claude.submitCode(code));
 ipcMain.handle('setup:claudeOpenLogin', () => claudeLoginUrl && shell.openExternal(claudeLoginUrl));
 ipcMain.handle('setup:claudeCancelLogin', () => claude.cancelLogin());
 ipcMain.handle('setup:claudeInstall', async () => {
-  try { await claude.install(log); } catch (e) { log('Cài Claude lỗi: ' + (e.message || e)); throw new Error('Chưa cài được Claude — kiểm tra mạng rồi bấm thử lại.'); }
+  try { await claude.install(log); } catch (e) { log('Cài Claude lỗi: ' + (e.message || e)); throw new Error('Chưa cài được công cụ phân tích — kiểm tra mạng rồi bấm thử lại.'); }
   return claudeCheck();
 });
 let claudeLoginUrl = null;
@@ -435,7 +435,7 @@ ipcMain.handle('setup:claudeLogin', async () => {
   const s = await claude.login(log, ({ url }) => { claudeLoginUrl = url; setupChanged(); });
   claudeLoginUrl = null;
   await claudeCheck();
-  if (!s.loggedIn) throw new Error('Chưa đăng nhập Claude — bấm Đăng nhập Claude và hoàn tất trên trình duyệt.');
+  if (!s.loggedIn) throw new Error('Chưa kết nối tài khoản phân tích — bấm Đăng nhập và hoàn tất trên trình duyệt.');
   return setupStatus();
 });
 // ------------------------------- Tài khoản & mức dùng (⚙ Cài đặt) ----------------
@@ -483,7 +483,7 @@ ipcMain.handle('account:refresh', async () => {
   const [g, c, u] = await Promise.all([
     runner.accountInfo({ ...runnerPaths(), key: 'account' }, log).then((x) => ({ ...x, ok: true }), (e) => ({ ok: false, error: e.message || String(e) })),
     claude.status().catch(() => ({})),
-    claude.usage().catch(() => null),
+    Promise.resolve(null), // mức dùng tài khoản phân tích: không hiển thị nữa (Anh4 yêu cầu ẩn)
   ]);
   const prev = getSettings().account || {};
   const account = {

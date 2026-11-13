@@ -180,7 +180,7 @@ async function startJob(mode) {
 async function startWithClaude(mode) {
   if (SETUP.st && !SETUP.st.claudeOk) {
     await openSetup();
-    SETUP.err = 'Cần đăng nhập Claude (bước 3) để phân tích design — làm xong rồi bấm lại.'; renderSetup();
+    SETUP.err = 'Cần kết nối tài khoản phân tích (bước 3) — làm xong rồi bấm lại.'; renderSetup();
     return;
   }
   startJob(mode);
@@ -498,7 +498,7 @@ function renderTiles() {
     tile('Job đang chạy', `${run}<small>/ ${wait} chờ</small>`, pick ? `${pick} job chờ chọn hướng` : `${jobs.length} job trong danh sách`),
     tile('Ảnh tạo hôm nay', `${st.imagesToday ?? 0}`, `7 ngày: ${st.images7 ?? 0} ảnh`),
     usageTile('ChatGPT', g),
-    usageTile('Claude', c),
+    tile('Job hôm nay', `${st.jobsToday ?? 0}`, `7 ngày: ${st.jobs7 ?? 0} job`),
   ].join('');
 }
 function renderChart() {
@@ -515,7 +515,7 @@ function renderChart() {
 }
 // Hồ sơ: tên hiển thị + ảnh đại diện (người dùng tự đặt); chưa đặt thì lấy chữ cái đầu tên / email.
 let prof = { name: '', avatarUrl: '' };
-const userEmail = () => dash?.chatgpt?.email || dash?.claude?.email || '';
+const userEmail = () => dash?.chatgpt?.email || ''; // chỉ email ChatGPT (không hiện tài khoản phân tích)
 const initial = () => ((prof.name || userEmail() || '?').trim()[0] || '?').toUpperCase();
 const avatarHtml = () => (prof.avatarUrl ? `<img src="${esc(prof.avatarUrl)}" alt="">` : esc(initial()));
 function renderAvatar() {
@@ -633,18 +633,12 @@ function renderAccount(a) {
           + `<div class="ar">Mức dùng cập nhật ${esc(ago(g.usage.at))}</div>`
         : (g.email ? '<div class="ar">Chưa đọc được mức dùng — bấm Làm mới.</div>' : '')}
     </div>
-    <div class="acct-card">
-      <div class="ah"><b>Claude</b>${c.loggedIn ? `<span class="chip ok">${esc(planName(c.plan))}${c.org ? ` · ${esc(c.org)}` : ''}</span>` : `<span class="chip ${c.checkedAt ? 'bad' : ''}">${c.checkedAt ? 'Chưa đăng nhập' : 'Chưa có thông tin'}</span>`}</div>
-      ${c.email ? `<div class="ar"><b>${esc(c.email)}</b></div>` : ''}
-      ${u ? meter('5 giờ', u.five_hour) + meter('Tuần', u.seven_day) + (u.status && u.status !== 'allowed' ? `<div class="ar err">Đang bị giới hạn (${esc(u.status)}) — bước phân tích sẽ lỗi tới lúc reset.</div>` : '') : (c.loggedIn ? '<div class="ar">Chưa đọc được mức dùng.</div>' : '')}
-      ${c.usageAt ? `<div class="ar">Mức dùng cập nhật ${esc(ago(c.usageAt))}</div>` : ''}
-    </div>
     <div class="acct-stats">
       <div><b>${st.imagesToday ?? 0}</b>ảnh hôm nay · ${st.images7 ?? 0} / 7 ngày</div>
       <div><b>${st.jobsToday ?? 0}</b>job hôm nay · ${st.jobs7 ?? 0} / 7 ngày</div>
       <div><b>${st.analysesToday ?? 0}</b>lượt phân tích hôm nay · ${st.analyses7 ?? 0} / 7 ngày</div>
     </div>
-    <div class="row-btns"><button class="btn sm" id="btnAcctSwitch">Đổi tài khoản ChatGPT / Claude…</button></div>`;
+    <div class="row-btns"><button class="btn sm" id="btnAcctSwitch">Đổi tài khoản ChatGPT…</button></div>`;
   $('btnAcctRefresh').disabled = acctBusy;
   $('btnAcctRefresh').textContent = acctBusy ? '⏳ Đang kiểm tra…' : '⟳ Làm mới';
 }
@@ -710,17 +704,17 @@ function renderSetup() {
           : `<span class="chip warn">Đã đăng nhập · chưa chuẩn bị xong tài khoản</span><div class="btns"><button class="btn sm pri" data-s="skill" ${dis()}>Thử lại</button><button class="btn sm" data-s="login" ${dis()}>Đăng nhập tài khoản khác</button></div>`)
         : `<p class="hint">Bấm nút dưới: app mở cửa sổ Chrome riêng, đăng nhập tài khoản ChatGPT (work) của bạn. Đăng nhập xong cửa sổ tự đóng.</p>
            <div class="btns"><button class="btn sm pri" data-s="login" ${dis(!st.chrome)}>Đăng nhập ChatGPT</button></div>`)}
-      ${step(3, 'Đăng nhập tài khoản Claude của bạn', st.claudeOk, st.claudeLoginUrl
-        ? `<p class="hint">Trình duyệt đã mở trang đăng nhập Claude. Đăng nhập tài khoản Claude của bạn → bấm <b>Authorize</b> → trang hiện 1 <b>mã</b>: bấm Copy rồi dán vào ô dưới.</p>
-           <div class="coderow"><input id="claudeCode" placeholder="Dán mã đăng nhập Claude vào đây" autocomplete="off"><button class="btn sm pri" data-s="claudeCode">Xác nhận</button></div>
+      ${step(3, 'Kết nối tài khoản phân tích', st.claudeOk, st.claudeLoginUrl
+        ? `<p class="hint">Trình duyệt đã mở trang đăng nhập. Đăng nhập tài khoản được cấp → bấm <b>Authorize</b> → trang hiện 1 <b>mã</b>: bấm Copy rồi dán vào ô dưới.</p>
+           <div class="coderow"><input id="claudeCode" placeholder="Dán mã đăng nhập vào đây" autocomplete="off"><button class="btn sm pri" data-s="claudeCode">Xác nhận</button></div>
            <div class="btns"><button class="btn sm" data-s="claudeOpen">Mở lại trang đăng nhập</button><button class="btn sm" data-s="claudeCancel">Huỷ</button></div>`
         : st.claudeOk
-        ? `<span class="chip ok">Đã đăng nhập${st.claudeEmail ? ` · ${esc(st.claudeEmail)}` : ''}</span><div class="btns"><button class="btn sm" data-s="claudeLogin" ${dis()}>Đăng nhập tài khoản khác</button></div>`
+        ? `<span class="chip ok">Đã kết nối</span><div class="btns"><button class="btn sm" data-s="claudeLogin" ${dis()}>Đăng nhập tài khoản khác</button></div>`
         : st.claudeInstalled
-          ? `<p class="hint">Dùng cho nút <b>Phân tích &amp; Scale</b>. Bấm nút dưới: trình duyệt mở trang đăng nhập Claude, đăng nhập tài khoản Claude của bạn rồi bấm <b>Authorize</b>, xong quay lại app.</p>
-             <div class="btns"><button class="btn sm pri" data-s="claudeLogin" ${dis()}>Đăng nhập Claude</button><button class="btn sm" data-s="claudeCheck" ${dis()}>Kiểm tra lại</button></div>`
-          : `<p class="hint">Dùng cho nút <b>Phân tích &amp; Scale</b>. Máy chưa có Claude — bấm nút dưới, app tự tải và cài (~1–3 phút, không cần quyền admin), rồi đăng nhập.</p>
-             <div class="btns"><button class="btn sm pri" data-s="claudeInstall" ${dis()}>Cài Claude</button><button class="btn sm" data-s="claudeCheck" ${dis()}>Kiểm tra lại</button></div>`)}
+          ? `<p class="hint">Dùng cho nút <b>Phân tích &amp; Scale</b>. Bấm nút dưới: trình duyệt mở trang đăng nhập, đăng nhập tài khoản được cấp rồi bấm <b>Authorize</b>, xong quay lại app.</p>
+             <div class="btns"><button class="btn sm pri" data-s="claudeLogin" ${dis()}>Đăng nhập</button><button class="btn sm" data-s="claudeCheck" ${dis()}>Kiểm tra lại</button></div>`
+          : `<p class="hint">Dùng cho nút <b>Phân tích &amp; Scale</b>. Máy chưa có công cụ phân tích — bấm nút dưới, app tự tải và cài (~1–3 phút, không cần quyền admin), rồi đăng nhập.</p>
+             <div class="btns"><button class="btn sm pri" data-s="claudeInstall" ${dis()}>Cài công cụ phân tích</button><button class="btn sm" data-s="claudeCheck" ${dis()}>Kiểm tra lại</button></div>`)}
       ${step(4, 'Chọn thư mục lưu kết quả', st.outDirOk, `<p class="hint">Mỗi job là 1 thư mục trong đây (design gốc + 5 mockup).</p>
         <div class="p">${esc(st.outDir)}</div>
         <div class="btns"><button class="btn sm" data-s="pick" ${dis()}>Chọn thư mục khác…</button>${st.outDirOk ? '' : `<button class="btn sm pri" data-s="usedir" ${dis()}>Dùng thư mục này</button>`}</div>`)}
@@ -747,17 +741,17 @@ $('dlgSetup').onclick = (e) => {
   });
   else if (a === 'skill') setupAct('Đang chuẩn bị tài khoản (~30–60 giây)…', () => S.installSkill());
   else if (a === 'check') setupAct('Đang kiểm tra tài khoản (~15–60 giây)…', () => S.check());
-  else if (a === 'claudeInstall') setupAct('Đang tải và cài Claude (~1–3 phút)…', async () => {
+  else if (a === 'claudeInstall') setupAct('Đang tải và cài công cụ phân tích (~1–3 phút)…', async () => {
     const r = await S.claudeInstall();
     if (r.claudeOk) return r;
-    SETUP.busy = 'Đã cài Claude — đang chờ bạn đăng nhập Claude trên trình duyệt…'; renderSetup();
+    SETUP.busy = 'Đã cài — đang chờ bạn đăng nhập trên trình duyệt…'; renderSetup();
     return S.claudeLogin();
   });
-  else if (a === 'claudeLogin') setupAct('Đang chờ bạn đăng nhập Claude trên trình duyệt…', () => S.claudeLogin());
+  else if (a === 'claudeLogin') setupAct('Đang chờ bạn đăng nhập trên trình duyệt…', () => S.claudeLogin());
   else if (a === 'claudeCode') {
     const v = $('claudeCode')?.value.trim();
     if (!v) { $('claudeCode')?.focus(); return; }
-    SETUP.busy = 'Đang xác nhận mã đăng nhập Claude…'; renderSetup();
+    SETUP.busy = 'Đang xác nhận mã đăng nhập…'; renderSetup();
     S.claudeCode(v);
   }
   else if (a === 'claudeOpen') S.claudeOpenLogin();

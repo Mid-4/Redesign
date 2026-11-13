@@ -62,7 +62,7 @@ function install(log = () => {}) {
 let loginProc = null;
 function login(log = () => {}, onPrompt = () => {}) {
   const exe = findClaude();
-  if (!exe) return Promise.reject(new Error('Máy chưa có Claude.'));
+  if (!exe) return Promise.reject(new Error('Máy chưa có công cụ phân tích — bấm Cài công cụ phân tích.'));
   if (loginProc) { try { loginProc.kill(); } catch {} }
   return new Promise((resolve) => {
     const p = spawn(exe, ['auth', 'login', '--claudeai'], { windowsHide: true });
