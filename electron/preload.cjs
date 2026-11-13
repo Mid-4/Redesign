@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   setSettings: (s) => ipcRenderer.invoke('settings:set', s),
   pickDir: () => ipcRenderer.invoke('settings:pickDir'),
   login: () => ipcRenderer.invoke('chatgpt:login'),
+  gemini: { login: () => ipcRenderer.invoke('gemini:login'), check: () => ipcRenderer.invoke('gemini:check') },
+  setEngine: (e) => ipcRenderer.invoke('engine:set', e),
   watch: (on) => ipcRenderer.invoke('chatgpt:watch', on),
   start: (payload) => ipcRenderer.invoke('job:start', payload),
   regen: (id, i, note) => ipcRenderer.invoke('job:regen', id, i, note),

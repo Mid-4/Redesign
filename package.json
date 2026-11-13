@@ -29,7 +29,8 @@
     "files": [
       "electron/**/*",
       "renderer/**/*",
-      "package.json"
+      "package.json",
+      "chatgpt-skill/comfort-redesign/SKILL.md"
     ],
     "asarUnpack": [
       "**/node_modules/playwright-core/**"

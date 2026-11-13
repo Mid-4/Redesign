@@ -177,7 +177,26 @@ async function startJob(mode) {
   } catch (e) { $('err').textContent = e.message || String(e); }
 }
 // Cả 2 luồng đều bắt đầu bằng bước Claude phân tích -> cần đăng nhập Claude.
+// ------------------------------- Tạo ảnh bằng ChatGPT hay Gemini -------------------------------
+const engine = () => (SETUP.st?.engine === 'gemini' ? 'gemini' : 'chatgpt');
+function renderEngine() {
+  for (const b of document.querySelectorAll('#engineSeg [data-engine]')) b.classList.toggle('on', b.dataset.engine === engine());
+}
+async function setEngine(e) {
+  const v = await window.api.setEngine(e);
+  if (SETUP.st) SETUP.st.engine = v;
+  renderEngine();
+  if (v === 'gemini' && !SETUP.st?.geminiOk) {
+    $('err').textContent = 'Gemini chưa đăng nhập — mở ⚙ Cài đặt → Tài khoản & mức dùng → Gemini → Đăng nhập.';
+  } else $('err').textContent = '';
+}
+$('engineSeg').onclick = (e) => { const b = e.target.closest('[data-engine]'); if (b) setEngine(b.dataset.engine); };
+
 async function startWithClaude(mode) {
+  if (engine() === 'gemini' && SETUP.st && !SETUP.st.geminiOk) {
+    $('err').textContent = 'Gemini chưa đăng nhập — mở ⚙ Cài đặt → Tài khoản & mức dùng → Gemini → Đăng nhập (hoặc chuyển sang ChatGPT).';
+    return;
+  }
   if (SETUP.st && !SETUP.st.claudeOk) {
     await openSetup();
     SETUP.err = 'Cần kết nối tài khoản phân tích (bước 3) — làm xong rồi bấm lại.'; renderSetup();
@@ -222,7 +241,7 @@ function renderAnalysis(j) {
   const modelLabel = { woman: 'Nữ', man: 'Nam', couple: 'Cặp đôi', auto: 'AI chọn' }[j.model] || '';
   const p = products.find((x) => x.name === j.product);
   $('anBody').innerHTML = `
-    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale' : 'Redesign 5 hướng'}</p>
+    <p class="an-row"><b>Loại job:</b>${j.mode === 'scale' ? 'Phân tích &amp; Scale' : 'Redesign 5 hướng'} · <b>Tạo ảnh bằng:</b>${j.engine === 'gemini' ? 'Gemini' : 'ChatGPT'}</p>
     <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''}</p>
     ${p?.cc ? `<p class="an-row"><b>Màu áo:</b>${esc(j.color || 'AI tự chọn theo từng hướng')}</p>` : ''}
     ${j.note ? `<p class="an-row"><b>Ghi chú:</b>${esc(j.note)}</p>` : ''}
@@ -288,7 +307,7 @@ function renderOption(o, i) {
   const shot = o.url
     ? `<img src="${esc(o.url)}" alt="" data-big="${esc(o.url)}">${regenning ? `<div class="regen-over">${o.regen === 'run' ? 'Đang tạo lại…' : 'Chờ tạo lại…'}</div>` : ''}`
     : `<div class="msg">${o.status === 'run' ? 'Đang làm…' : o.status === 'wait' ? 'Đang xếp hàng…' : 'Chưa có ảnh'}</div>`;
-  const canRegen = !regenning && o.status !== 'run' && !job.running && !!job.convUrl;
+  const canRegen = !regenning && o.status !== 'run' && !job.running && (!!job.convUrl || job.engine === 'gemini');
   return `<div class="card opt">
     <div class="top"><b title="${esc(o.name)}">${i + 1} · ${esc(o.name)}</b><span class="${cls}">${label}</span></div>
     <div class="shot ${o.status === 'run' || regenning ? 'run' : ''} ${regenning && o.url ? 'dim' : ''}">${shot}</div>
@@ -398,7 +417,7 @@ function rowHtml(j) {
   else if (!busy) acts.push(`<button class="btn sm" data-act="remove" data-id="${j.id}" title="Ẩn khỏi danh sách (file vẫn giữ)">Xoá khỏi danh sách</button>`);
   return `<div class="qrow">
     <div class="prod" data-act="detail" data-id="${j.id}"><img src="${esc(j.designUrl)}" alt="">
-      <div style="min-width:0"><div class="s">${esc(j.code || '')}${j.mode === 'scale' ? ' <span class="tag scale">Scale</span>' : ''}</div><div class="t" title="${esc(j.name)}">${esc(j.designCode || j.name)}</div><div class="s">${esc(sub)}</div></div></div>
+      <div style="min-width:0"><div class="s">${esc(j.code || '')}${j.mode === 'scale' ? ' <span class="tag scale">Scale</span>' : ''}${j.engine === 'gemini' ? ' <span class="tag gem">Gemini</span>' : ''}</div><div class="t" title="${esc(j.name)}">${esc(j.designCode || j.name)}</div><div class="s">${esc(sub)}</div></div></div>
     <div><span class="${cls}">${esc(label)}</span>${progressHtml(j)}</div>
     <div class="acts">${acts.join('')}</div>
   </div>`;
@@ -622,9 +641,12 @@ function meter(label, w) {
 }
 function renderAccount(a) {
   const g = a?.chatgpt || {}, c = a?.claude || {}, st = a?.stats || {}, u = c.usage;
+  const st0 = SETUP.st || {}, eng = engine();
+  const useBtn = (id) => (eng === id ? '<span class="chip ok">Đang dùng</span>' : `<button class="btn sm pri" data-use="${id}">Dùng</button>`);
   $('acctBox').innerHTML = `
-    <div class="acct-card">
-      <div class="ah"><b>ChatGPT</b>${g.email ? `<span class="chip ok">${esc(planName(g.plan))}${g.structure === 'workspace' ? ' · workspace' : ''}</span>` : '<span class="chip">Chưa có thông tin</span>'}</div>
+    <div class="acct-card ${eng === 'chatgpt' ? 'using' : ''}">
+      <div class="ah"><b>ChatGPT</b>${useBtn('chatgpt')}</div>
+      <div class="ah"><span></span>${g.email ? `<span class="chip ok">${esc(planName(g.plan))}${g.structure === 'workspace' ? ' · workspace' : ''}</span>` : '<span class="chip">Chưa có thông tin</span>'}</div>
       ${g.email ? `<div class="ar"><b>${esc(g.email)}</b>${g.name ? ` · ${esc(g.name)}` : ''}</div>
       <div class="ar">Phiên đăng nhập hết hạn: ${esc(fmtTime(g.expires))}${g.checkedAt ? ` · kiểm tra ${esc(ago(g.checkedAt))}` : ''}</div>` : ''}
       ${g.error ? `<div class="ar err">${esc(g.error)}</div>` : ''}
@@ -632,6 +654,13 @@ function renderAccount(a) {
           + (g.usage.limitReached || !g.usage.allowed ? '<div class="ar err">Đã chạm giới hạn ChatGPT — job sẽ lỗi tới lúc reset.</div>' : '')
           + `<div class="ar">Mức dùng cập nhật ${esc(ago(g.usage.at))}</div>`
         : (g.email ? '<div class="ar">Chưa đọc được mức dùng — bấm Làm mới.</div>' : '')}
+    </div>
+    <div class="acct-card ${eng === 'gemini' ? 'using' : ''}">
+      <div class="ah"><b>Gemini</b>${useBtn('gemini')}</div>
+      ${st0.geminiOk ? `<div class="ar"><b>${esc(st0.geminiEmail || 'Đã đăng nhập')}</b></div>` : '<div class="ar">Chưa đăng nhập tài khoản Google (gemini.google.com).</div>'}
+      <div class="ar">Tạo mockup bằng Gemini web (Nano Banana) — mỗi mẫu 1 lượt, chạy lần lượt.</div>
+      <div class="row-btns"><button class="btn sm" data-gem="login">${st0.geminiOk ? 'Đăng nhập tài khoản khác' : 'Đăng nhập Gemini'}</button>${st0.geminiOk ? '<button class="btn sm" data-gem="check">Kiểm tra</button>' : ''}</div>
+      <div class="ar" id="gemMsg"></div>
     </div>
     <div class="acct-stats">
       <div><b>${st.imagesToday ?? 0}</b>ảnh hôm nay · ${st.images7 ?? 0} / 7 ngày</div>
@@ -652,8 +681,19 @@ async function refreshAccount() {
   renderAccount(a);
 }
 $('btnAcctRefresh').onclick = () => refreshAccount();
-$('acctBox').addEventListener('click', (e) => {
+$('acctBox').addEventListener('click', async (e) => {
   if (e.target.closest('#btnAcctSwitch')) { $('dlgSettings').close(); openSetup(); }
+  const u = e.target.closest('[data-use]');
+  if (u) { await setEngine(u.dataset.use); renderAccount(await window.api.account.get().catch(() => null)); }
+  const g = e.target.closest('[data-gem]');
+  if (g) {
+    g.disabled = true;
+    $('gemMsg').textContent = g.dataset.gem === 'login' ? '⏳ Cửa sổ Chrome đã mở — đăng nhập tài khoản Google, xong cửa sổ tự đóng…' : '⏳ Đang kiểm tra…';
+    const r = await (g.dataset.gem === 'login' ? window.api.gemini.login() : window.api.gemini.check()).catch(() => ({ ok: false }));
+    SETUP.st = await window.api.setup.status();
+    renderAccount(await window.api.account.get().catch(() => null));
+    $('gemMsg').textContent = r.ok ? '✅ Gemini đã đăng nhập.' : '❌ Chưa đăng nhập được Gemini.';
+  }
 });
 $('btnPickDir').onclick = async () => { const d = await window.api.pickDir(); if (d) $('setOut').value = d; };
 $('btnSetCancel').onclick = () => $('dlgSettings').close();
@@ -769,7 +809,7 @@ async function openSetup() {
   renderSetup();
 }
 $('btnOpenSetup').onclick = () => { $('dlgSettings').close(); openSetup(); };
-window.api.onSetup((st) => { SETUP.st = st; renderSetup(); applySetup(); });
+window.api.onSetup((st) => { SETUP.st = st; renderSetup(); applySetup(); renderEngine(); });
 
 // ------------------------------- Tự cập nhật ---------------------------------
 function renderUpdate(st) {
@@ -798,7 +838,7 @@ window.api.update.onStatus(renderUpdate);
   render();
   // Máy chưa đủ điều kiện -> mở Cài đặt ban đầu; đã có Chrome thì tự kiểm tra ngầm đăng nhập + skill.
   SETUP.st = await window.api.setup.status();
-  applySetup();
+  applySetup(); renderEngine();
   if (!setupReady(SETUP.st)) {
     await openSetup();
     if (SETUP.st.chrome && (!SETUP.st.loginOk || !SETUP.st.skillOk || !SETUP.st.claudeOk)) setupAct('Đang kiểm tra tài khoản (~15–60 giây)…', () => window.api.setup.check());

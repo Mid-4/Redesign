@@ -182,6 +182,42 @@ function briefMessage({ product, model, color, note, designs, kind = 'scale' }) 
   ].filter(Boolean).join(' '); // 1 dòng: xuống dòng trong ô soạn ChatGPT có thể gửi tin luôn
 }
 
+// ------------------------------- Engine Gemini (gemini.google.com) -------------------------------
+// Gemini không có skill -> mỗi ảnh 1 tin nhắn đầy đủ. Mô tả sản phẩm (vùng in, góc chụp) đọc từ mục PRODUCTS của
+// SKILL.md (1 nguồn chung với ChatGPT; SKILL.md được đóng gói kèm app).
+let skillProducts = null;
+function productHint(name) {
+  if (!skillProducts) {
+    skillProducts = {};
+    try {
+      const md = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'chatgpt-skill', 'comfort-redesign', 'SKILL.md'), 'utf8');
+      for (const m of md.matchAll(/^- \*\*(.+?)\*\*(?: \[CC\])? — (.+)$/gm)) skillProducts[m[1]] = m[2].trim();
+    } catch {}
+  }
+  return skillProducts[name] || '';
+}
+
+/** Prompt Gemini cho 1 mockup (1 hướng). kind 'redesign' = giữ art + chữ design gốc; 'scale' = thiết kế mới theo brief. */
+function geminiPrompt({ product, model, color, note, design, kind = 'redesign', refCount = 0, imgNote = '', regenNote = '' }) {
+  const p = findProduct(product);
+  const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const hint = productHint(p.name);
+  return [
+    'Create ONE square 1:1 photorealistic e-commerce product mockup photo (real photography, soft natural light, slight depth of field). Output only the image.',
+    `Product: ${p.name}.${hint ? ` ${hint}` : ''}${p.spec ? ` ${specLine(p, '.')}` : ''}`,
+    p.wear ? `Model: ${MODEL_EN[model] || MODEL_EN.woman}. Adults only. The top edge of the frame cuts at the chin / jawline — mouth, nose and eyes must NOT be visible (back views: top edge at the nape).` : 'No people (hands at most); the product is the hero of a lifestyle scene.',
+    kind === 'redesign'
+      ? 'The FIRST attached image is the original design: keep its artwork (same illustration / characters) and ALL its text exactly, letter for letter, no new words — only the layout and style change as described below.'
+      : 'The FIRST attached image is the original design — use it only as the reference for quality, rendering style and print feel; create the NEW design described below.',
+    refCount ? `${refCount === 1 ? 'Attached image 2 is a reference image' : `Attached images 2-${refCount + 1} are reference images`}${imgNote ? ` — ${clean(imgNote)}` : ''}; never print ${refCount === 1 ? 'it' : 'them'} as the design.` : (imgNote ? `Note about the attached image: ${clean(imgNote)}` : ''),
+    `Design "${clean(design.name)}": ${clean(design.brief)}`,
+    `${p.cc ? 'Shirt color (Comfort Colors)' : 'Product / base color'}: ${clean(color || design.shirt_color)}.`,
+    note ? `Shop owner's note: ${clean(note)}` : '',
+    regenNote ? `Change requested for this new version: ${clean(regenNote)}` : '',
+    'The print looks real for the printing method and follows folds, curves and light. No watermark, no extra logos, no labels or text outside the design.',
+  ].filter(Boolean).join(' '); // 1 dòng: xuống dòng trong ô soạn Gemini có thể bị hiểu là gửi
+}
+
 function regenMessage(n, note) {
   return `Regenerate #${n}${note ? `. Note: ${note.replace(/\s+[—–]\s+/g, ', ').replace(/\s+/g, ' ').trim()}` : ''}`;
 }
@@ -203,4 +239,4 @@ function parseLines(text) {
   return out;
 }
 
-module.exports = { setCustomProducts, catalogGroups, CUSTOM_GROUP, refsPrompt, NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, briefFile, BRIEF_FILE, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };
+module.exports = { geminiPrompt, productHint, setCustomProducts, catalogGroups, CUSTOM_GROUP, refsPrompt, NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, briefFile, BRIEF_FILE, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };

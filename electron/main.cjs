@@ -9,6 +9,7 @@ const { pathToFileURL } = require('node:url');
 // "Comfort Redesign" làm mất phiên đăng nhập + cài đặt đã có khi chạy dev.
 app.setPath('userData', path.join(app.getPath('appData'), 'comfort-redesign'));
 const runner = require('./chatgpt-runner.cjs');
+const gemini = require('./gemini-runner.cjs'); // engine tạo ảnh thứ 2: gemini.google.com (tài khoản Google)
 const claude = require('./claude-agent.cjs'); // agent Claude: bước Phân tích & research của job Scale
 const P = require('./prompts.cjs');
 
@@ -16,7 +17,7 @@ let win = null;
 
 // ------------------------------- Cài đặt ------------------------------------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
-const defaults = () => ({ outDir: path.join(app.getPath('downloads'), 'Comfort Redesign'), skillName: 'comfort-redesign', parallel: 4 });
+const defaults = () => ({ outDir: path.join(app.getPath('downloads'), 'Comfort Redesign'), skillName: 'comfort-redesign', parallel: 4, engine: 'chatgpt' });
 function getSettings() {
   try { return { ...defaults(), ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; }
   catch { return defaults(); }
@@ -126,6 +127,10 @@ function stamp() {
   return `${String(d.getFullYear()).slice(2)}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
+const geminiPaths = () => ({
+  profileDir: path.join(app.getPath('userData'), 'gemini-profile'),
+  downloadDir: path.join(app.getPath('temp'), 'comfort-redesign-gemini'),
+});
 const runnerPaths = () => ({
   profileDir: path.join(app.getPath('userData'), 'chatgpt-profile'),
   downloadDir: path.join(app.getPath('temp'), 'comfort-redesign'), // ảnh tải tạm + ảnh chụp lỗi
@@ -293,6 +298,7 @@ async function runAll(job, collect = false) {
       saveJobFile(job); update();
       job.step = 'open'; job.stepAt = new Date().toISOString();
     }
+    if (job.engine === 'gemini') { await runGemini(job, refImgs, msgArgs); return; }
     await skillReady; // app vừa cập nhật skill mới vào tài khoản -> chờ cài xong rồi mới gửi
     const r = await runner.workTask(collect
       ? { ...runnerPaths(), ...hooks(job), url: job.convUrl, collectOnly: true, expect }
@@ -316,12 +322,48 @@ async function runAll(job, collect = false) {
     if (job.cancelled) { job.stage = 'cancelled'; job.error = 'Đã huỷ.'; jlog(job)('Đã huỷ job.'); }
     else { job.stage = 'error'; job.error = e.message || String(e); jlog(job)('❌ ' + job.error); }
     if (e.code === 'CLAUDE_AUTH') { setSettings({ claudeOk: false }); setupChanged(); }
+    else if (/^Gemini chưa đăng nhập/i.test(job.error || '')) { setSettings({ geminiOk: false }); setupChanged(); }
     else if (/chưa đăng nhập|hết hạn/i.test(job.error || '')) { setSettings({ loginOk: false }); setupChanged(); }
     job.options.forEach((o) => { if (o.status === 'run') { o.status = 'error'; o.error = job.cancelled ? 'Đã huỷ.' : 'Không có kết quả.'; } });
   } finally {
     job.running = false; job.cancelled = false; job.step = null;
     saveJobFile(job);
     pump();
+  }
+}
+
+/**
+ * Engine Gemini: mỗi hướng (đã chọn) = 1 tin nhắn Gemini -> 1 mockup, lần lượt (Gemini web 1 cửa sổ, xếp hàng).
+ * Mẫu lỗi không chặn mẫu khác; hết mẫu nào cũng lỗi mới báo lỗi job.
+ */
+async function runGemini(job, refImgs, msgArgs, only = null, regenNote = '') {
+  const designs = pickedDesigns(job);
+  const kind = job.mode === 'scale' ? 'scale' : 'redesign';
+  const todo = job.options.map((o, i) => i).filter((i) => (only == null ? job.options[i].status !== 'done' : i === only));
+  setStep(job, 'work');
+  let ok = 0, lastErr = null;
+  for (const i of todo) {
+    if (job.cancelled) throw new Error('Đã huỷ.');
+    const o = job.options[i];
+    o.status = 'run'; update();
+    try {
+      const prompt = P.geminiPrompt({ ...msgArgs, design: designs[i], kind, refCount: refImgs.length, imgNote: job.imgNote, regenNote });
+      jlog(job)(`Gemini: tạo mẫu ${i + 1}/${job.options.length}…`);
+      const r = await gemini.generate({ ...geminiPaths(), prompt, images: [job.design, ...refImgs], model: getSettings().geminiModel || '' }, jlog(job));
+      saveOption(job, i, r.path);
+      ok++; job.imgCount = (job.imgCount || 0) + 1;
+    } catch (e) {
+      lastErr = e;
+      o.status = only != null && o.file ? 'done' : 'error';
+      o.error = (only != null ? 'Tạo lại chưa được: ' : '') + (e.message || String(e));
+      jlog(job)(`❌ Gemini mẫu ${i + 1}: ${e.message || e}`);
+      if (/^Gemini chưa đăng nhập/i.test(e.message || '')) throw e; // chưa đăng nhập: dừng luôn
+    }
+    applyDesigns(job); saveJobFile(job); update();
+  }
+  if (only == null) {
+    if (!ok && lastErr) throw lastErr;
+    job.stage = 'done';
   }
 }
 
@@ -332,6 +374,20 @@ ipcMain.handle('settings:pickDir', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], defaultPath: getSettings().outDir });
   return r.canceled ? null : r.filePaths[0];
 });
+
+// ------------------------------- Gemini + chọn engine tạo ảnh -----------------------
+ipcMain.handle('gemini:login', async () => {
+  const r = await gemini.prepare({ ...geminiPaths() }, log);
+  if (r?.loggedIn) setSettings({ geminiOk: true, geminiEmail: r.email || '' });
+  setupChanged();
+  return { ok: !!r?.loggedIn, email: r?.email || '' };
+});
+ipcMain.handle('gemini:check', async () => {
+  const r = await gemini.checkLogin({ ...geminiPaths() }, log).catch(() => ({ loggedIn: false }));
+  setSettings({ geminiOk: !!r.loggedIn, ...(r.email ? { geminiEmail: r.email } : {}) });
+  return { ok: !!r.loggedIn, email: r.email || getSettings().geminiEmail || '' };
+});
+ipcMain.handle('engine:set', (_e, engine) => { setSettings({ engine: engine === 'gemini' ? 'gemini' : 'chatgpt' }); setupChanged(); return getSettings().engine; });
 
 ipcMain.handle('chatgpt:login', async () => {
   const r = await runner.prepare({ ...runnerPaths() }, log);
@@ -361,6 +417,7 @@ function setupStatus() {
     loginOk: !!st.loginOk,
     skillOk: !!st.skillOk,
     skillName: st.skillName,
+    engine: st.engine === 'gemini' ? 'gemini' : 'chatgpt', geminiOk: !!st.geminiOk, geminiEmail: st.geminiEmail || '',
     claudeOk: !!st.claudeOk, claudeInstalled: !!claude.findClaude(), claudeEmail: st.claudeEmail || '',
     claudeLoginUrl, // đang chờ nhân viên dán mã đăng nhập Claude
     outDir: st.outDir,
@@ -546,7 +603,7 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
   });
   const job = {
     id: ++seq, name, dir, designFile, design: { base64, mimeType },
-    mode: scale ? 'scale' : 'redesign', report: '', designCode: code, refFiles, imgNote: String(imgNote || '').trim(),
+    mode: scale ? 'scale' : 'redesign', engine: getSettings().engine === 'gemini' ? 'gemini' : 'chatgpt', report: '', designCode: code, refFiles, imgNote: String(imgNote || '').trim(),
     product: prod.name, model: prod.wear ? (model || 'woman') : '', color: prod.cc ? (color || '') : '', note: note || '',
     code: jobCode(scale ? 'SC' : 'CR'), createdAt: new Date().toISOString(), step: 'queue', stepAt: new Date().toISOString(),
     stage: 'queued', running: false, error: null, convUrl: null, options: [],
@@ -566,7 +623,7 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
 ipcMain.handle('job:regen', (_e, id, i, note) => {
   const job = findJob(id);
   const o = job?.options[i];
-  if (!o || job.running || o.regen || !job.convUrl) return;
+  if (!o || job.running || o.regen || (!job.convUrl && job.engine !== 'gemini')) return;
   o.regen = 'wait'; o.regenNote = String(note || '').trim(); o.error = null; update();
   job.regenChain = (job.regenChain || Promise.resolve()).then(() => regenOne(job, i)).catch(() => {});
 });
@@ -576,6 +633,14 @@ async function regenOne(job, i) {
   o.regen = 'run'; o.status = 'run'; update();
   try {
     if (o.regenNote) jlog(job)(`Tạo lại mẫu ${i + 1} với mô tả: ${o.regenNote}`);
+    if (job.engine === 'gemini') {
+      if (!job.design) job.design = { base64: fs.readFileSync(job.designFile).toString('base64'), mimeType: `image/${path.extname(job.designFile).slice(1).replace('jpg', 'jpeg')}` };
+      const refImgs = (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => ({ base64: fs.readFileSync(f).toString('base64'), mimeType: `image/${path.extname(f).slice(1).replace('jpg', 'jpeg')}` }));
+      await runGemini(job, refImgs, { product: job.product, model: job.model, color: job.color, note: job.note }, i, o.regenNote);
+      if (o.status === 'error' || (o.error && o.error.startsWith('Tạo lại chưa được'))) throw new Error(o.error.replace(/^Tạo lại chưa được: /, ''));
+      o.regen = null; saveJobFile(job); update();
+      return;
+    }
     const r = await runner.workTask({ ...runnerPaths(), key: `${job.id}-r${i}`, url: job.convUrl, message: P.regenMessage(i + 1, o.regenNote), images: [], expect: 1 }, jlog(job));
     applyInfo(o, P.parseLines(r.reply).slice(-1)[0]);
     if (!r.files.length) throw new Error('ChatGPT không tạo lại được.');
@@ -730,4 +795,4 @@ function setupAutoUpdate() {
 ipcMain.handle('update:get', () => updState);
 ipcMain.handle('app:version', () => app.getVersion());
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { runner.close(); });
+app.on('before-quit', () => { runner.close(); gemini.close(); });
