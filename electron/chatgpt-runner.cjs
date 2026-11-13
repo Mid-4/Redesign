@@ -9,6 +9,7 @@
 // ⚠️ ChatGPT chặn bot mạnh (Cloudflare). UI hay đổi -> selector gom ở khối SEL.
 // ============================================================================
 const { chromium } = require('playwright-core');
+const { hidePage } = require('./taskbar-hide.cjs'); // ẩn biểu tượng Chrome chạy ngầm khỏi taskbar
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -234,6 +235,7 @@ async function ensureContext(profileDir, log, visible) {
   first.on('close', () => { busyPages.delete(first); if (mainPage === first) mainPage = context?.pages().find((x) => !x.isClosed()) || null; });
   hidden = !wantVisible && !headless;
   if (!headless) await placeWindow(hidden ? OFFSCREEN : ONSCREEN, log);
+  if (hidden) await hidePage(mainPage, log);
 }
 
 /** Mở ChatGPT + đảm bảo đã đăng nhập. */
@@ -651,6 +653,7 @@ function openWindow(log) {
     const p = await created;
     await cdp.detach().catch(() => {});
     await placeWindow(b, log, p);
+    if (hidden) await hidePage(p, log);
     return p;
   });
   winLock = run.catch(() => {});

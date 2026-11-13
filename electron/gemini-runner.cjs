@@ -12,6 +12,7 @@
 // ⚠️ UI Gemini hay đổi -> selector gom ở khối SEL.
 // ============================================================================
 const { chromium } = require('playwright-core');
+const { hidePage } = require('./taskbar-hide.cjs'); // ẩn biểu tượng Chrome chạy ngầm khỏi taskbar
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -216,6 +217,7 @@ async function ensureContext(profileDir, log, visible) {
   }
   page = context.pages()[0] || (await context.newPage());
   context.on('close', () => { context = null; page = null; });
+  if (!wantVisible) await hidePage(page, log);
 }
 
 /** Mở Gemini + đảm bảo đã đăng nhập. */
