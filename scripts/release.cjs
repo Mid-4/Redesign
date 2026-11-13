@@ -56,5 +56,5 @@ const outDir = path.join(root, 'release'), keep = new Set([setup, 'win-unpacked'
 for (const f of fs.readdirSync(outDir)) if (!keep.has(f)) fs.rmSync(path.join(outDir, f), { recursive: true, force: true });
 
 console.log(`\n✓ Đã phát hành v${version}: https://github.com/${owner}/${repo}/releases/tag/v${version}`);
-console.log(`  File gửi nhân viên (cài lần đầu): release\${setup}`);
+console.log(`  File gửi nhân viên (cài lần đầu): ${path.join('release', setup)}`);
 console.log('  Máy đã cài: mở app sẽ tự tải bản mới, bấm "Khởi động lại & cập nhật" hoặc tắt app là xong.\n');
