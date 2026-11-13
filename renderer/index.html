@@ -43,14 +43,20 @@
       <div class="card-h"><h2>Tạo job mới</h2></div>
 
       <label class="drop" id="drop">
-        <input type="file" id="inFile" accept="image/png,image/jpeg,image/webp" hidden>
+        <input type="file" id="inFile" accept="image/png,image/jpeg,image/webp" multiple hidden>
         <img id="preview" alt="" hidden>
         <div id="dropText">
           <div class="drop-ico">⇪</div>
           <b>Kéo-thả design vào đây</b>
-          <div class="hint">hoặc bấm để chọn file · <b>Ctrl+V</b> để dán ảnh · png, jpg, webp</div>
+          <div class="hint">hoặc bấm để chọn file · <b>Ctrl+V</b> để dán ảnh · png, jpg, webp · tối đa 6 ảnh</div>
         </div>
       </label>
+      <div class="thumbs" id="thumbs" hidden></div>
+      <div class="field" id="fieldImgNote" hidden>
+        <label for="imgNote">Mô tả ảnh đính kèm</label>
+        <textarea id="imgNote" rows="2" placeholder="VD: ảnh 2 lấy font chữ, ảnh 3 lấy màu áo và bố cục mặt trước…"></textarea>
+        <p class="hint">Ảnh 1 (viền xanh) là design chính. Bấm vào ảnh khác để đặt làm design chính, bấm × để bỏ.</p>
+      </div>
 
       <div class="field">
         <label for="designCode">Mã / tên design</label>

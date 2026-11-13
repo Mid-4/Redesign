@@ -52,6 +52,7 @@ function snap(job) {
   return {
     ...rest,
     designUrl: pathToFileURL(job.designFile).href,
+    refUrls: (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => pathToFileURL(f).href),
     options: job.options.map((o) => ({ ...o, url: o.file ? `${pathToFileURL(o.file).href}?t=${o.t}` : null })),
   };
 }
@@ -256,6 +257,10 @@ async function runAll(job, collect = false) {
     const ext = path.extname(job.designFile).slice(1).replace('jpg', 'jpeg');
     job.design = { base64: fs.readFileSync(job.designFile).toString('base64'), mimeType: `image/${ext}` };
   }
+  // Ảnh tham khảo (ảnh 2..N nhân viên đính kèm) -> gửi kèm sau design chính.
+  const refImgs = collect ? [] : (job.refFiles || []).filter((f) => fs.existsSync(f)).map((f) => ({
+    base64: fs.readFileSync(f).toString('base64'), mimeType: `image/${path.extname(f).slice(1).replace('jpg', 'jpeg')}`,
+  }));
   job.running = true; job.cancelled = false; job.stage = 'running'; job.error = null; job.imgCount = 0;
   job.step = 'open'; job.stepAt = new Date().toISOString();
   job.options.forEach((o) => { if (o.status !== 'done') { o.status = 'run'; o.error = null; } });
@@ -270,7 +275,7 @@ async function runAll(job, collect = false) {
       const scale = job.mode === 'scale';
       setStep(job, 'analyze');
       const a = await claude.analyze({
-        key: job.id, designFile: job.designFile,
+        key: job.id, designFile: job.designFile, refFiles: job.refFiles || [], refsText: (names) => P.refsPrompt(names, job.imgNote),
         prompt: scale ? P.scaleAnalysisPrompt(msgArgs) : P.redesignAnalysisPrompt(msgArgs),
         tools: scale ? 'Read,WebSearch,WebFetch' : 'Read',
         workDir: path.join(runnerPaths().downloadDir, `claude-${path.basename(job.dir)}`),
@@ -297,10 +302,10 @@ async function runAll(job, collect = false) {
         skill: getSettings().skillName,
         // Có brief của Claude -> skill chỉ vẽ theo brief (phòng hờ không có brief thì skill tự phân tích như bản đầu).
         // Có brief của Claude -> tin nhắn CHỈ gọi @skill, brief nằm trong file comfort-brief.md đính kèm.
-        message: job.designs?.length ? '' : P.skillMessage(msgArgs),
+        message: job.designs?.length ? '' : P.skillMessage({ ...msgArgs, note: [job.note, job.imgNote && `Images: ${job.imgNote}`].filter(Boolean).join(' · ') }),
         images: job.designs?.length
-          ? [job.design, { fileName: P.BRIEF_FILE, text: P.briefFile({ ...msgArgs, designs: pickedDesigns(job), kind: job.mode === 'scale' ? 'scale' : 'redesign' }) }]
-          : [job.design],
+          ? [job.design, ...refImgs, { fileName: P.BRIEF_FILE, text: P.briefFile({ ...msgArgs, designs: pickedDesigns(job), kind: job.mode === 'scale' ? 'scale' : 'redesign', refCount: refImgs.length, imgNote: job.imgNote }) }]
+          : [job.design, ...refImgs],
         expect,
         onUrl: (u) => { job.convUrl = u; saveJobFile(job); update(); },
       }, jlog(job));
@@ -520,7 +525,7 @@ ipcMain.handle('setup:getChrome', () => shell.openExternal('https://www.google.c
 ipcMain.handle('chatgpt:watch', (_e, on) => runner.setWatch(on, log));
 
 // mode: 'redesign' (5 hướng redesign) | 'scale' (research các sàn + 4 mẫu scale + báo cáo).
-ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note, mode, designCode }) => {
+ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, color, note, mode, designCode, refs = [], imgNote = '' }) => {
   const prod = P.findProduct(product);
   const scale = mode === 'scale';
   const code = safeName(designCode);
@@ -533,9 +538,15 @@ ipcMain.handle('job:start', (_e, { base64, mimeType, fileName, product, model, c
   const ext = (mimeType || 'image/png').split('/')[1].replace('jpeg', 'jpg');
   const designFile = path.join(dir, `design-goc.${ext}`);
   fs.writeFileSync(designFile, Buffer.from(base64, 'base64'));
+  // Ảnh tham khảo: design-goc-2.png, -3… (thư mục job vẫn chỉ chứa ảnh)
+  const refFiles = (refs || []).slice(0, 5).map((r, i) => {
+    const f = path.join(dir, `design-goc-${i + 2}.${(r.mimeType || 'image/png').split('/')[1].replace('jpeg', 'jpg')}`);
+    fs.writeFileSync(f, Buffer.from(r.base64, 'base64'));
+    return f;
+  });
   const job = {
     id: ++seq, name, dir, designFile, design: { base64, mimeType },
-    mode: scale ? 'scale' : 'redesign', report: '', designCode: code,
+    mode: scale ? 'scale' : 'redesign', report: '', designCode: code, refFiles, imgNote: String(imgNote || '').trim(),
     product: prod.name, model: prod.wear ? (model || 'woman') : '', color: prod.cc ? (color || '') : '', note: note || '',
     code: jobCode(scale ? 'SC' : 'CR'), createdAt: new Date().toISOString(), step: 'queue', stepAt: new Date().toISOString(),
     stage: 'queued', running: false, error: null, convUrl: null, options: [],

@@ -113,7 +113,7 @@ const procs = new Map(); // key -> child process (để huỷ)
  * Phân tích design + research thị trường + lên 5 mẫu scale.
  * -> { report: markdown tiếng Việt, designs: [{ name, shirt_color, summary_vi, brief }] }
  */
-function analyze({ key, designFile, prompt, workDir, tools = 'Read,WebSearch,WebFetch', timeoutMs = 25 * 60 * 1000 }, log = () => {}) {
+function analyze({ key, designFile, refFiles = [], refsText = () => '', prompt, workDir, tools = 'Read,WebSearch,WebFetch', timeoutMs = 25 * 60 * 1000 }, log = () => {}) {
   const exe = findClaude();
   // Lỗi hiện cho nhân viên không nhắc tên công cụ (chi tiết ghi app.log); lỗi tài khoản gắn code CLAUDE_AUTH.
   const authErr = (m) => Object.assign(new Error(m), { code: 'CLAUDE_AUTH' });
@@ -121,6 +121,11 @@ function analyze({ key, designFile, prompt, workDir, tools = 'Read,WebSearch,Web
   fs.mkdirSync(workDir, { recursive: true });
   const img = path.join(workDir, 'design' + path.extname(designFile));
   fs.copyFileSync(designFile, img);
+  const refNames = refFiles.filter((f) => fs.existsSync(f)).map((f, i) => {
+    const name = `reference-${i + 2}${path.extname(f)}`;
+    fs.copyFileSync(f, path.join(workDir, name));
+    return name;
+  });
   const args = [
     '-p', '--output-format', 'json', '--json-schema', JSON.stringify(SCHEMA),
     '--tools', tools, '--allowedTools', tools,
@@ -153,7 +158,7 @@ function analyze({ key, designFile, prompt, workDir, tools = 'Read,WebSearch,Web
       log(`Claude phân tích xong (${Math.round((j.duration_ms || 0) / 1000)}s, ${j.usage?.server_tool_use?.web_search_requests || 0} lượt tìm web).`);
       resolve({ report: String(data.report_md || '').trim(), designs: data.designs.slice(0, 5) });
     });
-    p.stdin.end(prompt.replace('{{DESIGN}}', path.basename(img)));
+    p.stdin.end(prompt.replace('{{DESIGN}}', path.basename(img)).replace('{{REFS}}', refsText(refNames)));
   });
 }
 

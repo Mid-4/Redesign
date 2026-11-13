@@ -70,7 +70,7 @@ function scaleAnalysisPrompt({ product, model, color, note }) {
   const p = findProduct(product);
   return `You are a senior print-on-demand (POD) market researcher and designer for a US-focused POD shop.
 
-The design to analyze is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first.
+The design to analyze is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first.{{REFS}}
 Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note: ${note}` : ''}
 
 Do this:
@@ -96,7 +96,7 @@ function redesignAnalysisPrompt({ product, model, color, note }) {
   const p = findProduct(product);
   return `You are a senior print-on-demand (POD) designer.
 
-The design to redesign is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first and study it closely.
+The design to redesign is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first and study it closely.{{REFS}}
 Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note (follow it): ${note}` : ''}
 
 Do this:
@@ -123,7 +123,7 @@ Return JSON only (it is validated against a schema):
  * kind 'redesign' = giữ art + chữ của design đính kèm; 'scale' = thiết kế mới theo brief.
  */
 const BRIEF_FILE = 'comfort-brief.md';
-function briefFile({ product, model, color, note, designs, kind = 'scale' }) {
+function briefFile({ product, model, color, note, designs, kind = 'scale', refCount = 0, imgNote = '' }) {
   const p = findProduct(product);
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   return [
@@ -134,12 +134,29 @@ function briefFile({ product, model, color, note, designs, kind = 'scale' }) {
     p.wear ? `Model: ${model || 'woman'}` : '',
     note ? `Note: ${clean(note)}` : '',
     '',
+    ...attachedImagesSection(refCount, imgNote),
     kind === 'redesign'
       ? 'Keep the attached design\'s artwork and ALL its text exactly; change only layout and style as each design below says.'
       : 'New scale designs: follow each design below; the attached image is only the quality and style reference.',
     '',
     ...designs.flatMap((d, i) => [`## #${i + 1} ${clean(d.name)}`, `${p.cc ? 'Shirt color' : 'Color'}: ${clean(color || d.shirt_color)}`, clean(d.brief), '']),
   ].filter((x, k, a) => x !== '' || a[k - 1] !== '').join('\n');
+}
+
+/** Mục "ảnh đính kèm" trong brief: ảnh 1 = design chính, ảnh 2..N = ảnh tham khảo + mô tả của nhân viên. */
+function attachedImagesSection(refCount, imgNote) {
+  if (!refCount && !imgNote) return [];
+  return ['## Attached images',
+    refCount ? `Image 1 (the first attached image) = the original design. Images 2-${refCount + 1} = reference images — use them only as the staff note says; never output them as designs.` : 'Image 1 = the original design.',
+    imgNote ? `Staff note about the images: ${String(imgNote).replace(/\s+/g, ' ').trim()}` : '', ''].filter((x, k) => x !== '' || k === 3);
+}
+/** Câu nhắc cho Claude về ảnh tham khảo (thay {{REFS}}). */
+function refsPrompt(names, imgNote) {
+  if (!names.length && !imgNote) return '';
+  const note = imgNote ? ` Staff note about the attached images: ${String(imgNote).replace(/\s+/g, ' ').trim().replace(/[.!]?$/, '.')}` : '';
+  return names.length
+    ? `\nAlso open the reference image(s) ${names.map((n) => `"${n}"`).join(', ')} — they are extra references from the staff (not the design to redesign).${note} Take them into account in the analysis and in every brief.`
+    : `\n${note.trim()}`;
 }
 
 function briefMessage({ product, model, color, note, designs, kind = 'scale' }) {
@@ -177,4 +194,4 @@ function parseLines(text) {
   return out;
 }
 
-module.exports = { NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, briefFile, BRIEF_FILE, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };
+module.exports = { refsPrompt, NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, briefFile, BRIEF_FILE, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };

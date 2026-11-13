@@ -25,7 +25,8 @@ function setChip() {
 // ------------------------------- Ảnh design ---------------------------------
 /** Đưa form về trạng thái job mới hoàn toàn: xoá ảnh, sản phẩm / người mẫu / màu / ghi chú về mặc định. */
 function resetForm() {
-  design = null;
+  design = null; images = [];
+  $('imgNote').value = ''; renderThumbs();
   $('preview').hidden = true; $('preview').removeAttribute('src'); $('dropText').hidden = false;
   $('inFile').value = '';
   $('selProduct').value = defaultProduct;
@@ -36,31 +37,52 @@ function resetForm() {
   syncProduct(); paintColor();
 }
 
+// Nhiều ảnh: ảnh đầu = design chính (design), các ảnh sau = ảnh tham khảo. Tối đa 6.
+const MAX_IMAGES = 6;
+let images = []; // [{ base64, mimeType, fileName, url }]
+function renderThumbs() {
+  design = images[0] || null;
+  $('thumbs').hidden = !images.length; $('fieldImgNote').hidden = !images.length;
+  $('drop').classList.toggle('has', !!images.length);
+  $('dropText').querySelector('b').textContent = images.length ? `+ Thêm ảnh (${images.length}/${MAX_IMAGES})` : 'Kéo-thả design vào đây';
+  $('thumbs').innerHTML = images.map((im, i) => `<div class="thumb ${i === 0 ? 'main' : ''}" data-ti="${i}" title="${i === 0 ? 'Design chính' : 'Bấm để đặt làm design chính'}">
+      <img src="${im.url}" alt=""><span class="tn">${i === 0 ? 'Chính' : i + 1}</span><button class="tx" data-tx="${i}" title="Bỏ ảnh">×</button></div>`).join('');
+  refreshButtons();
+}
+$('thumbs').onclick = (e) => {
+  const x = e.target.closest('[data-tx]');
+  if (x) { images.splice(Number(x.dataset.tx), 1); renderThumbs(); return; }
+  const t = e.target.closest('[data-ti]');
+  if (t && Number(t.dataset.ti) > 0) { const [im] = images.splice(Number(t.dataset.ti), 1); images.unshift(im); renderThumbs(); }
+};
+function loadFiles(files) {
+  for (const f of [...(files || [])]) loadFile(f);
+}
 function loadFile(file) {
   if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) { $('err').textContent = 'Chỉ nhận ảnh png, jpg, webp.'; return; }
+  if (images.length >= MAX_IMAGES) { $('err').textContent = `Tối đa ${MAX_IMAGES} ảnh.`; return; }
   const fr = new FileReader();
   fr.onload = () => {
+    if (images.length >= MAX_IMAGES) return;
     const url = String(fr.result);
-    design = { base64: url.split(',')[1], mimeType: file.type, fileName: file.name || 'design.png' };
-    // Chưa nhập mã -> gợi ý theo tên file (ảnh dán từ clipboard tên chung chung thì bỏ qua), sửa lại được.
+    images.push({ base64: url.split(',')[1], mimeType: file.type, fileName: file.name || 'design.png', url });
+    // Ảnh đầu tiên: chưa nhập mã -> gợi ý theo tên file (ảnh dán clipboard tên chung chung thì bỏ qua), sửa lại được.
     const stem = (file.name || '').replace(/\.[^.]+$/, '');
-    if (!$('designCode').value.trim() && stem && !/^(image|design|paste|clipboard|untitled)\b/i.test(stem)) $('designCode').value = stem.slice(0, 60);
-    $('preview').src = url; $('preview').hidden = false; $('dropText').hidden = true;
+    if (images.length === 1 && !$('designCode').value.trim() && stem && !/^(image|design|paste|clipboard|untitled)\b/i.test(stem)) $('designCode').value = stem.slice(0, 60);
     $('err').textContent = '';
-    refreshButtons();
+    renderThumbs();
   };
   fr.readAsDataURL(file);
 }
 
 const drop = $('drop');
-$('inFile').onchange = (e) => loadFile(e.target.files[0]);
+$('inFile').onchange = (e) => { loadFiles(e.target.files); e.target.value = ''; };
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
-drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); loadFile(e.dataTransfer.files[0]); };
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); loadFiles(e.dataTransfer.files); };
 document.addEventListener('paste', (e) => {
   if (e.target.closest?.('input, textarea')) return;
-  const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
-  if (item) loadFile(item.getAsFile());
+  for (const item of [...(e.clipboardData?.items || [])].filter((i) => i.type.startsWith('image/'))) loadFile(item.getAsFile());
 });
 
 // ------------------------------- Màu áo -------------------------------------
@@ -102,7 +124,8 @@ async function startJob(mode) {
   $('err').textContent = '';
   try {
     const p = product();
-    await window.api.start({ ...design, mode, designCode: $('designCode').value.trim(), product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
+    const { url, ...main } = design;
+    await window.api.start({ ...main, refs: images.slice(1).map(({ url: _u, ...r }) => r), imgNote: $('imgNote').value.trim(), mode, designCode: $('designCode').value.trim(), product: p.name, model: p.wear ? $('selModel').value : '', color: p.cc ? $('selColor').value : '', note: $('note').value.trim() });
     resetForm(); // như Design Template: tạo job xong thì form trống để tạo job mới hoàn toàn
     render();
   } catch (e) { $('err').textContent = e.message || String(e); }
@@ -157,6 +180,8 @@ function renderAnalysis(j) {
     <p class="an-row"><b>Sản phẩm:</b>${esc(j.product || '')}${modelLabel ? ` · <b>Người mẫu:</b>${esc(modelLabel)}` : ''}</p>
     ${p?.cc ? `<p class="an-row"><b>Màu áo:</b>${esc(j.color || 'AI tự chọn theo từng hướng')}</p>` : ''}
     ${j.note ? `<p class="an-row"><b>Ghi chú:</b>${esc(j.note)}</p>` : ''}
+    ${j.refUrls?.length ? `<div class="an-row"><b>Ảnh tham khảo:</b><div class="refs">${j.refUrls.map((u) => `<img src="${esc(u)}" alt="" data-big="${esc(u)}">`).join('')}</div></div>` : ''}
+    ${j.imgNote ? `<p class="an-row"><b>Mô tả ảnh:</b>${esc(j.imgNote)}</p>` : ''}
     <p class="an-row"><b>Thư mục:</b>${esc(j.dir)}</p>
     ${['error', 'cancelled'].includes(j.stage) ? `<p class="err">${esc(j.error)}</p>` : ''}`;
   // Lỗi / thiếu mẫu mà đã có hội thoại -> lấy lại kết quả (ChatGPT có thể vẫn đang làm tiếp).
@@ -519,6 +544,7 @@ $('grid').onclick = (e) => {
   else if (t.dataset.file) window.api.openFile(job.options[Number(t.dataset.file)].file);
 };
 $('btnCloseImg').onclick = () => $('dlgImg').close();
+$('anBody').addEventListener('click', (e) => { const t = e.target.closest('[data-big]'); if (t) { $('bigImg').src = t.dataset.big; $('dlgImg').showModal(); } });
 $('dlgImg').onclick = (e) => { if (e.target === $('dlgImg')) $('dlgImg').close(); };
 
 // ------------------------------- Cài đặt / giao diện ------------------------
