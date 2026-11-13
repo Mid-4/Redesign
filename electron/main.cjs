@@ -645,7 +645,29 @@ ipcMain.handle('job:retry', (_e, id) => {
 
 ipcMain.handle('open:conv', (_e, id) => { const u = findJob(id)?.convUrl; if (u) shell.openExternal(u); });
 ipcMain.handle('colors', () => P.COLORS);
-ipcMain.handle('catalog', () => ({ products: P.PRODUCTS, models: P.MODELS, defaultProduct: P.DEFAULT_PRODUCT }));
+ipcMain.handle('catalog', () => ({ products: P.catalogGroups(), models: P.MODELS, defaultProduct: P.DEFAULT_PRODUCT }));
+// Sản phẩm tự thêm: lưu trong settings.customProducts (mỗi máy một danh sách), nạp vào prompts khi mở app.
+const loadCustomProducts = () => P.setCustomProducts(getSettings().customProducts || []);
+ipcMain.handle('products:list', () => getSettings().customProducts || []);
+ipcMain.handle('products:save', (_e, item, oldName) => {
+  const name = String(item?.name || '').replace(/\s+/g, ' ').trim().slice(0, 50);
+  const spec = String(item?.spec || '').trim().slice(0, 600);
+  if (!name) throw new Error('Nhập tên sản phẩm.');
+  if (!spec) throw new Error('Nhập mô tả sản phẩm cho AI (vùng in, số mặt, cách chụp mockup).');
+  const list = (getSettings().customProducts || []).filter((p) => p.name !== oldName);
+  const builtIn = P.PRODUCTS.flatMap((g) => g.items).some((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (builtIn || list.some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new Error(`Đã có sản phẩm tên "${name}".`);
+  list.push({ name, wear: !!item.wear, cc: !!item.cc, spec });
+  setSettings({ customProducts: list });
+  loadCustomProducts();
+  return list;
+});
+ipcMain.handle('products:delete', (_e, name) => {
+  const list = (getSettings().customProducts || []).filter((p) => p.name !== name);
+  setSettings({ customProducts: list });
+  loadCustomProducts();
+  return list;
+});
 ipcMain.handle('jobs:get', () => jobs.map(snap));
 ipcMain.handle('open:dir', (_e, id) => { const j = findJob(id); if (j) shell.openPath(j.dir); });
 ipcMain.handle('open:file', (_e, f) => f && shell.showItemInFolder(f));
@@ -665,7 +687,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   try { if (fs.statSync(logFile()).size > 2e6) fs.unlinkSync(logFile()); } catch {}
-  loadHistory(); createWindow();
+  loadCustomProducts(); loadHistory(); createWindow();
   refreshSkillIfChanged();
   // Lỗi kiểm tra cập nhật không bao giờ được chặn app khởi động.
   try { setupAutoUpdate(); } catch (e) { log('[update] lỗi khởi tạo: ' + (e?.message || e)); }

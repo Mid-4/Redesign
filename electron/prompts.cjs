@@ -42,8 +42,15 @@ const PRODUCTS = [
   ] },
 ];
 const DEFAULT_PRODUCT = 'T-Shirt 2 mặt';
-const findProduct = (name) => PRODUCTS.flatMap((g) => g.items).find((p) => p.name === name)
+// Sản phẩm người dùng tự thêm (⚙ / nút dưới ô Sản phẩm): { name, wear, cc, spec } — spec = mô tả cho AI
+// (vùng in, số mặt, cách chụp mockup), gửi kèm vì skill không có sẵn sản phẩm này.
+const CUSTOM_GROUP = 'Sản phẩm thêm';
+let CUSTOM = [];
+function setCustomProducts(list) { CUSTOM = (list || []).map((p) => ({ name: p.name, wear: !!p.wear, cc: !!p.cc, spec: p.spec || '', custom: true })); }
+const catalogGroups = () => (CUSTOM.length ? [...PRODUCTS, { group: CUSTOM_GROUP, items: CUSTOM }] : PRODUCTS);
+const findProduct = (name) => [...PRODUCTS.flatMap((g) => g.items), ...CUSTOM].find((p) => p.name === name)
   || PRODUCTS[0].items.find((p) => p.name === DEFAULT_PRODUCT);
+const specLine = (p, end = '') => (p.spec ? `Product spec (custom product — follow exactly): ${String(p.spec).replace(/\s+/g, ' ').trim().replace(/[.!;,\s]+$/, '')}${end}` : '');
 
 // Người mẫu cho đồ mặc: [giá trị gửi skill, nhãn trên app].
 const MODELS = [['woman', 'Nữ'], ['man', 'Nam'], ['couple', 'Cặp đôi'], ['auto', 'AI chọn']];
@@ -54,6 +61,7 @@ function skillMessage({ product, model, color, note }) {
   return [
     `Create ${NUM_OPTIONS} options for the attached design.`,
     `Product: ${p.name}.`,
+    specLine(p, '.'),
     p.wear ? `Model: ${model || 'woman'}.` : '',
     p.cc ? `Shirt color: ${color || 'choose per option'}.` : '',
     note ? `Note: ${note}` : '',
@@ -71,7 +79,7 @@ function scaleAnalysisPrompt({ product, model, color, note }) {
   return `You are a senior print-on-demand (POD) market researcher and designer for a US-focused POD shop.
 
 The design to analyze is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first.{{REFS}}
-Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note: ${note}` : ''}
+Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.spec ? ` ${specLine(p, '.')}` : ''}${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note: ${note}` : ''}
 
 Do this:
 1. ANALYZE the design: niche, target buyer, occasion, subject/art, every text exactly, style, layout, and the selling "formula" (e.g. "funny profession phrase + retro sunset badge").
@@ -97,7 +105,7 @@ function redesignAnalysisPrompt({ product, model, color, note }) {
   return `You are a senior print-on-demand (POD) designer.
 
 The design to redesign is the image file "{{DESIGN}}" in the current directory — open it with the Read tool first and study it closely.{{REFS}}
-Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note (follow it): ${note}` : ''}
+Target product: ${p.name}${p.wear ? ` (worn by ${MODEL_EN[model] || MODEL_EN.woman})` : ''}.${p.spec ? ` ${specLine(p, '.')}` : ''}${p.cc ? ` Shirt: Comfort Colors garment-dyed${color ? `, color fixed to "${color}"` : ''}.` : ''}${note ? `\nShop owner's note (follow it): ${note}` : ''}
 
 Do this:
 1. ANALYZE: theme/niche and target buyer; describe the artwork precisely (subjects, pose, details, colors) so an illustrator could recognize it; transcribe EVERY text exactly as printed (spelling, punctuation, capitalization); current style and layout.
@@ -131,6 +139,7 @@ function briefFile({ product, model, color, note, designs, kind = 'scale', refCo
     `Mode: ${kind === 'redesign' ? 'REDESIGN' : 'SCALE'}`,
     `Images: ${designs.length}`,
     `Product: ${p.name}`,
+    specLine(p),
     p.wear ? `Model: ${model || 'woman'}` : '',
     note ? `Note: ${clean(note)}` : '',
     '',
@@ -194,4 +203,4 @@ function parseLines(text) {
   return out;
 }
 
-module.exports = { refsPrompt, NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, briefFile, BRIEF_FILE, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };
+module.exports = { setCustomProducts, catalogGroups, CUSTOM_GROUP, refsPrompt, NUM_OPTIONS, SCALE_OPTIONS, scaleAnalysisPrompt, redesignAnalysisPrompt, briefMessage, briefFile, BRIEF_FILE, COLORS, PRODUCTS, MODELS, DEFAULT_PRODUCT, findProduct, skillMessage, regenMessage, parseLines };

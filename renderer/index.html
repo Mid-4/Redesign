@@ -66,6 +66,7 @@
       <div class="field">
         <label for="selProduct">Sản phẩm</label>
         <select id="selProduct"></select>
+        <button class="linkbtn" id="btnProducts" type="button">+ Thêm / quản lý sản phẩm</button>
       </div>
 
       <div class="field" id="fieldModel">
@@ -135,6 +136,29 @@
 
   <dialog id="dlgSetup" class="mid"></dialog>
 
+  <dialog id="dlgProducts" class="mid">
+    <div class="dlg">
+      <div class="dlg-head col"><h3>Sản phẩm của bạn</h3><div class="hint">Thêm sản phẩm mới để chọn trong ô Sản phẩm. Lưu trên máy này.</div></div>
+      <div class="dlg-body">
+        <div id="prodList" class="prod-list"></div>
+        <div class="prod-form">
+          <b id="pfTitle">Thêm sản phẩm mới</b>
+          <div class="field"><label for="prName">Tên sản phẩm</label><input id="prName" maxlength="50" placeholder="VD: Tote Bag, Phone Case, Bucket Hat…" autocomplete="off"></div>
+          <div class="field checks">
+            <label><input type="checkbox" id="prWear"> Có người mẫu mặc / dùng</label>
+            <label><input type="checkbox" id="prCc"> Áo Comfort Colors (cho chọn màu áo)</label>
+          </div>
+          <div class="field"><label for="prSpec">Mô tả sản phẩm cho AI</label>
+            <textarea id="prSpec" rows="4" maxlength="600" placeholder="Ghi rõ: chất liệu / kiểu dáng, vùng in và số mặt in, cách chụp mockup.&#10;VD: Túi tote canvas màu kem 15×16 inch, in 1 mặt trước vùng in vuông lớn. Mockup: người mẫu nữ đeo túi trên vai, khung từ cằm xuống hông, nền quán cà phê."></textarea>
+            <p class="hint">AI không có sẵn sản phẩm này — mô tả càng rõ, mockup càng đúng.</p></div>
+          <p class="err" id="prErr"></p>
+          <div class="row-btns"><button class="btn pri" id="btnPrSave">Thêm sản phẩm</button><button class="btn" id="btnPrNew" hidden>Huỷ sửa</button></div>
+        </div>
+      </div>
+      <div class="dlg-foot"><button class="btn" id="btnPrClose">Đóng</button></div>
+    </div>
+  </dialog>
+
   <dialog id="dlgProfile" class="small">
     <div class="dlg">
       <div class="dlg-head"><h3>Hồ sơ của bạn</h3></div>
@@ -168,7 +192,7 @@
           <p class="hint">Mỗi job là 1 cửa sổ Chrome. Nếu ChatGPT báo giới hạn (quá nhiều task / ảnh) thì giảm số này.</p>
         </div>
       </div>
-      <div class="dlg-foot"><button class="btn" id="btnOpenSetup" style="margin-right:auto">Cài đặt ban đầu…</button><button class="btn" id="btnSetCancel">Huỷ</button><button class="btn pri" id="btnSetSave">Lưu</button></div>
+      <div class="dlg-foot"><button class="btn" id="btnOpenSetup">Cài đặt ban đầu…</button><button class="btn" id="btnOpenProducts" style="margin-right:auto">Sản phẩm của bạn…</button><button class="btn" id="btnSetCancel">Huỷ</button><button class="btn pri" id="btnSetSave">Lưu</button></div>
     </div>
   </dialog>
 

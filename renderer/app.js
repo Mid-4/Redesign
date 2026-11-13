@@ -93,6 +93,7 @@ let paintColor = () => {};
 let syncProduct = () => {};
 const product = () => products.find((p) => p.name === $('selProduct').value) || products[0];
 async function initCatalog() {
+  const keep = $('selProduct').value;
   const c = await window.api.catalog();
   products = c.products.flatMap((g) => g.items);
   $('selProduct').innerHTML = c.products.map((g) => `<optgroup label="${esc(g.group)}">${g.items.map((p) => `<option>${esc(p.name)}</option>`).join('')}</optgroup>`).join('');
@@ -101,7 +102,52 @@ async function initCatalog() {
   const sync = () => { const p = product(); $('fieldModel').hidden = !p.wear; $('fieldColor').hidden = !p.cc; };
   syncProduct = sync;
   $('selProduct').onchange = sync;
+  if (keep && products.some((p) => p.name === keep)) { $('selProduct').value = keep; sync(); }
 }
+
+// ------------------------------- Sản phẩm tự thêm -------------------------------
+let editingProduct = null; // tên sản phẩm đang sửa (null = thêm mới)
+async function renderProducts() {
+  const list = await window.api.products.list();
+  $('prodList').innerHTML = list.length
+    ? list.map((p) => `<div class="prod-item"><div class="pi"><b>${esc(p.name)}</b><span>${[p.wear ? 'Có người mẫu' : 'Không người mẫu', p.cc ? 'Comfort Colors' : ''].filter(Boolean).join(' · ')} — ${esc(p.spec)}</span></div>
+        <button class="btn sm" data-pedit="${esc(p.name)}">Sửa</button><button class="btn sm danger" data-pdel="${esc(p.name)}">Xoá</button></div>`).join('')
+    : '<p class="hint">Chưa có sản phẩm tự thêm.</p>';
+  return list;
+}
+function productForm(p) {
+  editingProduct = p ? p.name : null;
+  $('prName').value = p?.name || ''; $('prWear').checked = !!p?.wear; $('prCc').checked = !!p?.cc; $('prSpec').value = p?.spec || '';
+  $('pfTitle').textContent = p ? `Sửa: ${p.name}` : 'Thêm sản phẩm mới';
+  $('btnPrSave').textContent = p ? 'Lưu thay đổi' : 'Thêm sản phẩm';
+  $('btnPrNew').hidden = !p; $('prErr').textContent = '';
+}
+async function openProducts() { productForm(null); await renderProducts(); $('dlgProducts').showModal(); $('prName').focus(); }
+$('btnProducts').onclick = () => openProducts();
+$('btnOpenProducts').onclick = () => { $('dlgSettings').close(); openProducts(); };
+$('btnPrClose').onclick = () => $('dlgProducts').close();
+$('btnPrNew').onclick = () => productForm(null);
+$('prCc').onchange = () => { if ($('prCc').checked) $('prWear').checked = true; };
+$('btnPrSave').onclick = async () => {
+  $('prErr').textContent = '';
+  const item = { name: $('prName').value, wear: $('prWear').checked, cc: $('prCc').checked, spec: $('prSpec').value };
+  try {
+    await window.api.products.save(item, editingProduct);
+    const name = item.name.replace(/\s+/g, ' ').trim();
+    productForm(null); await renderProducts(); await initCatalog();
+    $('selProduct').value = name; syncProduct(); // chọn luôn sản phẩm vừa thêm
+  } catch (e) { $('prErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/i, ''); }
+};
+$('prodList').onclick = async (e) => {
+  const ed = e.target.closest('[data-pedit]'), del = e.target.closest('[data-pdel]');
+  const list = await window.api.products.list();
+  if (ed) productForm(list.find((p) => p.name === ed.dataset.pedit));
+  if (del && confirm(`Xoá sản phẩm "${del.dataset.pdel}"? (job cũ không bị ảnh hưởng)`)) {
+    await window.api.products.remove(del.dataset.pdel);
+    if (editingProduct === del.dataset.pdel) productForm(null);
+    await renderProducts(); await initCatalog();
+  }
+};
 
 async function initColors() {
   colors = await window.api.colors();

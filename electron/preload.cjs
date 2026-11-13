@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('api', {
   collect: (id) => ipcRenderer.invoke('job:collect', id),
   colors: () => ipcRenderer.invoke('colors'),
   catalog: () => ipcRenderer.invoke('catalog'),
+  products: {
+    list: () => ipcRenderer.invoke('products:list'), save: (item, oldName) => ipcRenderer.invoke('products:save', item, oldName),
+    remove: (name) => ipcRenderer.invoke('products:delete', name),
+  },
   setup: {
     status: () => ipcRenderer.invoke('setup:status'),
     check: () => ipcRenderer.invoke('setup:check'),
