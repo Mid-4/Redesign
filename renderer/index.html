@@ -138,7 +138,7 @@
 
   <dialog id="dlgProducts" class="mid">
     <div class="dlg">
-      <div class="dlg-head col"><h3>Sản phẩm của bạn</h3><div class="hint">Thêm sản phẩm mới để chọn trong ô Sản phẩm. Lưu trên máy này.</div></div>
+      <div class="dlg-head col"><h3>Sản phẩm của bạn</h3><div class="hint">Thêm sản phẩm mới để chọn trong ô Sản phẩm — AI tự đọc sản phẩm từ ảnh design / mockup đính kèm. Lưu trên máy này.</div></div>
       <div class="dlg-body">
         <div id="prodList" class="prod-list"></div>
         <div class="prod-form">
@@ -148,9 +148,6 @@
             <label><input type="checkbox" id="prWear"> Có người mẫu mặc / dùng</label>
             <label><input type="checkbox" id="prCc"> Áo Comfort Colors (cho chọn màu áo)</label>
           </div>
-          <div class="field"><label for="prSpec">Mô tả sản phẩm cho AI</label>
-            <textarea id="prSpec" rows="4" maxlength="600" placeholder="Ghi rõ: chất liệu / kiểu dáng, vùng in và số mặt in, cách chụp mockup.&#10;VD: Túi tote canvas màu kem 15×16 inch, in 1 mặt trước vùng in vuông lớn. Mockup: người mẫu nữ đeo túi trên vai, khung từ cằm xuống hông, nền quán cà phê."></textarea>
-            <p class="hint">AI không có sẵn sản phẩm này — mô tả càng rõ, mockup càng đúng.</p></div>
           <p class="err" id="prErr"></p>
           <div class="row-btns"><button class="btn pri" id="btnPrSave">Thêm sản phẩm</button><button class="btn" id="btnPrNew" hidden>Huỷ sửa</button></div>
         </div>

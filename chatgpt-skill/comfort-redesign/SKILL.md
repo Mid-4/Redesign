@@ -83,7 +83,7 @@ Each line: print area / sides → mockup.
 - **Circle Glass Ornament** — flat round glass ornament, circular composition. → Hanging on a Christmas tree.
 - **Circle Ceramic Ornament** — flat round white porcelain ornament with gold string, circular composition. → Hanging on a Christmas tree.
 
-Product not in the list → if a `Product spec:` line is given (in the message or `comfort-brief.md`), it is a custom product from the shop owner: follow that spec exactly (material, print area, sides, mockup crop/scene). Without a spec, treat it like the closest product above.
+Product not in the list → if a `Product spec:` line is given (in the message or `comfort-brief.md`), it is a custom product from the shop owner: follow that spec exactly (material, print area, sides, mockup crop/scene). Without a spec (custom products usually have only a name), work out the product from its name and the attached design / mockup images — material, print area and sides as that product is normally sold — and shoot the mockup like the closest product above.
 
 If an image is refused or fails, adjust the wording and retry once. Do not stop before all 5 images exist.
 

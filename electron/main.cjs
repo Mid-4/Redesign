@@ -651,13 +651,11 @@ const loadCustomProducts = () => P.setCustomProducts(getSettings().customProduct
 ipcMain.handle('products:list', () => getSettings().customProducts || []);
 ipcMain.handle('products:save', (_e, item, oldName) => {
   const name = String(item?.name || '').replace(/\s+/g, ' ').trim().slice(0, 50);
-  const spec = String(item?.spec || '').trim().slice(0, 600);
   if (!name) throw new Error('Nhập tên sản phẩm.');
-  if (!spec) throw new Error('Nhập mô tả sản phẩm cho AI (vùng in, số mặt, cách chụp mockup).');
   const list = (getSettings().customProducts || []).filter((p) => p.name !== oldName);
   const builtIn = P.PRODUCTS.flatMap((g) => g.items).some((p) => p.name.toLowerCase() === name.toLowerCase());
   if (builtIn || list.some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new Error(`Đã có sản phẩm tên "${name}".`);
-  list.push({ name, wear: !!item.wear, cc: !!item.cc, spec });
+  list.push({ name, wear: !!item.wear, cc: !!item.cc });
   setSettings({ customProducts: list });
   loadCustomProducts();
   return list;

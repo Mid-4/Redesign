@@ -110,14 +110,14 @@ let editingProduct = null; // tên sản phẩm đang sửa (null = thêm mới)
 async function renderProducts() {
   const list = await window.api.products.list();
   $('prodList').innerHTML = list.length
-    ? list.map((p) => `<div class="prod-item"><div class="pi"><b>${esc(p.name)}</b><span>${[p.wear ? 'Có người mẫu' : 'Không người mẫu', p.cc ? 'Comfort Colors' : ''].filter(Boolean).join(' · ')} — ${esc(p.spec)}</span></div>
+    ? list.map((p) => `<div class="prod-item"><div class="pi"><b>${esc(p.name)}</b><span>${[p.wear ? 'Có người mẫu' : 'Không người mẫu', p.cc ? 'Comfort Colors' : ''].filter(Boolean).join(' · ')}</span></div>
         <button class="btn sm" data-pedit="${esc(p.name)}">Sửa</button><button class="btn sm danger" data-pdel="${esc(p.name)}">Xoá</button></div>`).join('')
     : '<p class="hint">Chưa có sản phẩm tự thêm.</p>';
   return list;
 }
 function productForm(p) {
   editingProduct = p ? p.name : null;
-  $('prName').value = p?.name || ''; $('prWear').checked = !!p?.wear; $('prCc').checked = !!p?.cc; $('prSpec').value = p?.spec || '';
+  $('prName').value = p?.name || ''; $('prWear').checked = !!p?.wear; $('prCc').checked = !!p?.cc;
   $('pfTitle').textContent = p ? `Sửa: ${p.name}` : 'Thêm sản phẩm mới';
   $('btnPrSave').textContent = p ? 'Lưu thay đổi' : 'Thêm sản phẩm';
   $('btnPrNew').hidden = !p; $('prErr').textContent = '';
@@ -130,7 +130,7 @@ $('btnPrNew').onclick = () => productForm(null);
 $('prCc').onchange = () => { if ($('prCc').checked) $('prWear').checked = true; };
 $('btnPrSave').onclick = async () => {
   $('prErr').textContent = '';
-  const item = { name: $('prName').value, wear: $('prWear').checked, cc: $('prCc').checked, spec: $('prSpec').value };
+  const item = { name: $('prName').value, wear: $('prWear').checked, cc: $('prCc').checked };
   try {
     await window.api.products.save(item, editingProduct);
     const name = item.name.replace(/\s+/g, ' ').trim();
